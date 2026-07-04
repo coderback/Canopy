@@ -17,8 +17,21 @@ class Settings(BaseSettings):
         "accounting.settings accounting.contacts accounting.transactions"
     )
 
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-5"
+    # LLM = Azure AI Foundry via the OpenAI-compatible SDK (mapping/ingest/matching
+    # engines). "azure" uses AzureOpenAI(azure_endpoint, api_version, deployment);
+    # "openai" uses OpenAI(base_url, api_key, model) for a plain OpenAI-compatible
+    # endpoint (OpenAI, DeepSeek, a Foundry serverless URL, etc.).
+    llm_provider: str = "azure"
+
+    azure_openai_endpoint: str = ""       # https://<resource>.openai.azure.com
+    azure_openai_api_key: str = ""
+    azure_openai_api_version: str = "2024-10-21"
+    azure_openai_deployment: str = ""     # the model deployment name
+
+    # Generic OpenAI-compatible fallback (used when llm_provider="openai").
+    openai_api_key: str = ""
+    openai_base_url: str = ""
+    openai_model: str = "gpt-4o"
 
     # Fernet key for encrypting the OAuth token set at rest.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

@@ -4,57 +4,17 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..execution import execute_run
-from ..models import Proposal, Run, utcnow
+from ..models import Run, utcnow
+from ..serializers import run_dict
 from ..xero.client import xero_api
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
 
-def _proposal_dict(p: Proposal) -> dict:
-    return {
-        "id": p.id,
-        "entity_id": p.entity_id,
-        "entity_name": p.entity.name if p.entity else None,
-        "action": p.action,
-        "mapped_payload": p.mapped_payload,
-        "edited_payload": p.edited_payload,
-        "confidence": p.confidence,
-        "reasoning": p.reasoning,
-        "needs_human": p.needs_human,
-        "status": p.status,
-        "results": [
-            {
-                "attempt": r.attempt,
-                "success": r.success,
-                "error": r.error,
-                "xero_id": r.xero_id,
-                "created_at": r.created_at.isoformat(),
-            }
-            for r in p.write_results
-        ],
-    }
-
-
-def _run_dict(run: Run, include_proposals: bool = True) -> dict:
-    data = {
-        "id": run.id,
-        "kind": run.kind,
-        "change_type": run.change_type,
-        "status": run.status,
-        "source_payload": run.source_payload,
-        "created_at": run.created_at.isoformat(),
-        "approved_at": run.approved_at.isoformat() if run.approved_at else None,
-        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
-    }
-    if include_proposals:
-        data["proposals"] = [_proposal_dict(p) for p in run.proposals]
-    return data
-
-
 @router.get("")
 def list_runs(db: Session = Depends(get_db)):
     runs = db.query(Run).order_by(Run.created_at.desc()).limit(50).all()
-    return [_run_dict(r, include_proposals=False) for r in runs]
+    return [run_dict(r, include_proposals=False) for r in runs]
 
 
 @router.get("/{run_id}")
@@ -62,7 +22,7 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     run = db.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="unknown run")
-    return _run_dict(run)
+    return run_dict(run)
 
 
 class RowDecision(BaseModel):
@@ -114,4 +74,4 @@ async def approve_run(run_id: int, body: ApproveRequest, db: Session = Depends(g
 
     await execute_run(db, xero_api, run)
     db.refresh(run)
-    return _run_dict(run)
+    return run_dict(run)
