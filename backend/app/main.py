@@ -1,17 +1,27 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .db import init_db
-from .routers import auth, entities, runs
+from .routers import auth, changes, entities, runs
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
 
 app = FastAPI(
     title="Canopy — Multi-Entity Command Centre",
     description=(
         "One change, propagated correctly across every Xero organisation in the "
-        "group. Claude proposes structured mappings; deterministic validated code "
+        "group. An LLM proposes structured mappings; deterministic validated code "
         "writes — only after one batched human approval."
     ),
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -23,12 +33,8 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(entities.router)
+app.include_router(changes.router)
 app.include_router(runs.router)
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
 
 
 @app.get("/health")
