@@ -20,9 +20,32 @@ from ..config import get_settings
 
 TOOL_NAME = "emit_proposal"
 
+_token_provider = None  # cached Entra ID bearer-token provider (auto-refreshing)
+
+
+def _get_token_provider(scope: str):
+    """Cache one DefaultAzureCredential token provider. It returns a fresh,
+    internally-cached bearer token string on each call, so we can safely fetch a
+    token per request without re-probing the credential chain each time."""
+    global _token_provider
+    if _token_provider is None:
+        from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+
+        _token_provider = get_bearer_token_provider(DefaultAzureCredential(), scope)
+    return _token_provider
+
 
 def _build_client_and_model():
     settings = get_settings()
+    if settings.llm_provider == "azure_ad":
+        # Foundry /openai/v1 endpoint + Entra ID. The OpenAI client signs
+        # Authorization: Bearer <api_key>, so we pass a fresh AAD token as the key.
+        from openai import OpenAI
+
+        token = _get_token_provider(settings.azure_ad_scope)()
+        client = OpenAI(base_url=settings.azure_openai_endpoint, api_key=token)
+        return client, settings.azure_openai_deployment
+
     if settings.llm_provider == "openai":
         from openai import OpenAI
 
@@ -67,7 +90,7 @@ def _call_sync(system: str, user: str, tool_schema: dict) -> dict:
             "parameters": tool_schema,
         },
     }
-    completion = client.chat.completions.create(
+    kwargs = dict(
         model=model,
         messages=[
             {"role": "system", "content": system},
@@ -75,8 +98,11 @@ def _call_sync(system: str, user: str, tool_schema: dict) -> dict:
         ],
         tools=[tool],
         tool_choice={"type": "function", "function": {"name": TOOL_NAME}},
-        temperature=0,
     )
+    temperature = get_settings().llm_temperature
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    completion = client.chat.completions.create(**kwargs)
     return _extract_arguments(completion)
 
 

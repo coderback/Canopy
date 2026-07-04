@@ -18,20 +18,30 @@ class Settings(BaseSettings):
     )
 
     # LLM = Azure AI Foundry via the OpenAI-compatible SDK (mapping/ingest/matching
-    # engines). "azure" uses AzureOpenAI(azure_endpoint, api_version, deployment);
-    # "openai" uses OpenAI(base_url, api_key, model) for a plain OpenAI-compatible
-    # endpoint (OpenAI, DeepSeek, a Foundry serverless URL, etc.).
-    llm_provider: str = "azure"
+    # engines). Provider modes:
+    #   "azure_ad" — Foundry /openai/v1 endpoint + Entra ID (DefaultAzureCredential
+    #                token provider); NO api key. This is our setup.
+    #   "azure"    — classic AzureOpenAI(azure_endpoint, api_version) with an api key.
+    #   "openai"   — plain OpenAI(base_url, api_key) for any OpenAI-compatible endpoint.
+    llm_provider: str = "azure_ad"
 
-    azure_openai_endpoint: str = ""       # https://<resource>.openai.azure.com
+    # Foundry /openai/v1 endpoint, e.g.
+    # https://<resource>.services.ai.azure.com/openai/v1
+    azure_openai_endpoint: str = ""
+    azure_openai_deployment: str = ""     # the model deployment name (e.g. gpt-5.4-mini)
+    azure_ad_scope: str = "https://ai.azure.com/.default"
+
+    # Only used by llm_provider="azure" (api-key mode).
     azure_openai_api_key: str = ""
     azure_openai_api_version: str = "2024-10-21"
-    azure_openai_deployment: str = ""     # the model deployment name
 
     # Generic OpenAI-compatible fallback (used when llm_provider="openai").
     openai_api_key: str = ""
     openai_base_url: str = ""
     openai_model: str = "gpt-4o"
+
+    # gpt-5-class models reject non-default temperature; leave None to omit it.
+    llm_temperature: float | None = None
 
     # Fernet key for encrypting the OAuth token set at rest.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -41,6 +51,10 @@ class Settings(BaseSettings):
 
     snapshot_ttl_seconds: int = 300
     frontend_origin: str = "http://localhost:3000"
+
+    # Dev-only: exposes POST /demo/seed and lets approval simulate Xero writes
+    # (via DemoXeroApi) when no real token is connected. Set false in production.
+    demo_mode: bool = True
 
 
 @lru_cache

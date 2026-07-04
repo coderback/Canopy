@@ -2,13 +2,26 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..db import get_db
 from ..execution import execute_run
 from ..models import Run, utcnow
 from ..serializers import run_dict
+from ..xero import auth as xero_auth
 from ..xero.client import xero_api
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+def _select_api(db: Session):
+    """Real Xero when a token is connected; the offline demo client otherwise
+    (so the approval flow is demonstrable before trial orgs are wired)."""
+    settings = get_settings()
+    if settings.demo_mode and xero_auth.load_token(db) is None:
+        from ..demo import demo_api
+
+        return demo_api
+    return xero_api
 
 
 @router.get("")
@@ -72,6 +85,6 @@ async def approve_run(run_id: int, body: ApproveRequest, db: Session = Depends(g
     run.approved_at = utcnow()
     db.commit()
 
-    await execute_run(db, xero_api, run)
+    await execute_run(db, _select_api(db), run)
     db.refresh(run)
     return run_dict(run)
