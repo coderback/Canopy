@@ -1,63 +1,103 @@
-import Image from "next/image";
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { getEntities, getRun, getRuns, type Entity, type Run } from "@/lib/api";
+import { Card } from "@/components/ui";
+import ApprovalTable from "@/components/ApprovalTable";
+import EntitiesPanel from "@/components/EntitiesPanel";
+import NewChangeForm from "@/components/NewChangeForm";
+import RunHistory from "@/components/RunHistory";
 
 export default function Home() {
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [runs, setRuns] = useState<Run[]>([]);
+  const [activeRun, setActiveRun] = useState<Run | null>(null);
+  const [connError, setConnError] = useState<string | null>(null);
+
+  const refreshLists = useCallback(async () => {
+    try {
+      const [e, r] = await Promise.all([getEntities(), getRuns()]);
+      setEntities(e);
+      setRuns(r);
+      setConnError(null);
+    } catch (err) {
+      setConnError((err as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshLists();
+  }, [refreshLists]);
+
+  const onRun = useCallback(
+    (run: Run) => {
+      setActiveRun(run);
+      refreshLists();
+    },
+    [refreshLists]
+  );
+
+  const onSelectRun = useCallback(async (id: number) => {
+    try {
+      setActiveRun(await getRun(id));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="min-h-full w-full">
+      <header className="border-b border-border bg-surface">
+        <div className="mx-auto max-w-6xl px-6 py-5">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🌳</span>
+            <h1 className="text-lg font-semibold text-slate-900">Canopy</h1>
+            <span className="text-sm text-muted">Multi-Entity Command Centre</span>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">
+            One change, propagated correctly across every Xero organisation. The AI proposes and
+            explains; a human approves once; deterministic code writes.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 py-6">
+        {connError && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+            {connError}
+          </div>
+        )}
+
+        <Card className="mb-6">
+          <EntitiesPanel entities={entities} />
+        </Card>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-1">
+            <Card>
+              <NewChangeForm entities={entities} onRun={onRun} />
+            </Card>
+            <Card>
+              <RunHistory runs={runs} activeId={activeRun?.id ?? null} onSelect={onSelectRun} />
+            </Card>
+          </div>
+
+          <div className="lg:col-span-2">
+            <Card>
+              {activeRun ? (
+                <ApprovalTable run={activeRun} onRunUpdate={onRun} />
+              ) : (
+                <div className="flex min-h-64 flex-col items-center justify-center px-6 py-16 text-center">
+                  <p className="text-sm font-medium text-slate-700">No run selected</p>
+                  <p className="mt-1 max-w-sm text-sm text-muted">
+                    Propose a change across your entities, or click <b>Load demo run</b> to see the
+                    batched approval flow — including the 200→201 account mapping and a refusal that
+                    blocks approval.
+                  </p>
+                </div>
+              )}
+            </Card>
+          </div>
         </div>
       </main>
     </div>
