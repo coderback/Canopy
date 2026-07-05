@@ -51,7 +51,6 @@ async def execute_proposal(db: Session, api: XeroApi, proposal: Proposal) -> Wri
         payload = validate_payload(proposal.action, payload)
         response = await _write(api, db, proposal.entity.tenant_id, proposal.action, dict(payload))
         result = WriteResult(
-            proposal_id=proposal.id,
             attempt=attempt,
             success=True,
             request_json=payload,
@@ -61,14 +60,15 @@ async def execute_proposal(db: Session, api: XeroApi, proposal: Proposal) -> Wri
         proposal.status = "executed"
     except (XeroApiError, ValueError, KeyError) as exc:
         result = WriteResult(
-            proposal_id=proposal.id,
             attempt=attempt,
             success=False,
             request_json=payload if isinstance(payload, dict) else {},
             error=str(exc),
         )
         proposal.status = "failed"
-    db.add(result)
+    # Attach via the relationship (not a bare FK) so the in-memory proposal's
+    # write_results stays consistent — the approve response serializes it directly.
+    proposal.write_results.append(result)
     db.commit()
     return result
 
