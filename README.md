@@ -198,7 +198,7 @@ We fixed it: an optional `XERO_TENANT_ID` environment variable honoured by both 
 failing loudly (with the list of available tenant IDs) if it doesn't match an authorised
 connection rather than silently falling back. Non-breaking when unset, covered by unit tests.
 
-**Upstream PR:** _link pending — branch `feat/xero-tenant-id-override`._
+**Upstream PR:** [XeroAPI/xero-mcp-server#208](https://github.com/XeroAPI/xero-mcp-server/pull/208)
 
 ---
 
