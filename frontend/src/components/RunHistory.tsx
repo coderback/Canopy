@@ -29,8 +29,12 @@ export default function RunHistory({
                     : "border-border bg-white hover:bg-slate-50"
                 }`}
               >
-                <span className="text-sm text-slate-700">
-                  #{r.id} · {r.change_type ?? r.kind}
+                <span className="flex items-center gap-1.5 text-sm text-slate-700">
+                  <span title={r.kind}>{r.kind === "ingest" ? "📄" : "🔁"}</span>
+                  #{r.id} ·{" "}
+                  {r.kind === "ingest"
+                    ? (r.source_payload?.doc_type as string) ?? "ingest"
+                    : r.change_type ?? r.kind}
                 </span>
                 <StatusPill status={r.status} />
               </button>

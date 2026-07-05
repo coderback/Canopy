@@ -90,15 +90,13 @@ export default function NewChangeForm({
   }
 
   return (
-    <div className="p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-900">New change</h2>
-        <Button variant="ghost" onClick={loadDemo} disabled={busy} className="!px-2 !py-1 text-xs">
-          Load demo run
-        </Button>
-      </div>
+    <div>
+      <p className="mb-3 text-xs text-muted">
+        Change a contact, item, account code or tracking category once — Canopy maps it to each
+        organisation&apos;s own chart and fans out the writes.
+      </p>
 
-      <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
+      <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg bg-surface-sunken p-1 ring-1 ring-inset ring-border">
         {TYPES.map((t) => (
           <button
             key={t.value}
@@ -147,9 +145,12 @@ export default function NewChangeForm({
 
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
 
-      <div className="mt-3">
+      <div className="mt-3 flex items-center gap-2">
         <Button onClick={submit} disabled={busy || entities.length === 0}>
           {busy ? "Mapping…" : "Propose across entities"}
+        </Button>
+        <Button variant="ghost" onClick={loadDemo} disabled={busy} className="!px-2.5 !py-2 text-xs">
+          Load demo run
         </Button>
       </div>
     </div>

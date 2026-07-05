@@ -16,6 +16,34 @@ export function Card({
   );
 }
 
+export function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: ReactNode }[];
+}) {
+  return (
+    <div className="inline-flex w-full rounded-lg bg-surface-sunken p-1 ring-1 ring-inset ring-border">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            value === o.value
+              ? "bg-surface text-brand-strong shadow-sm ring-1 ring-inset ring-border"
+              : "text-muted hover:text-slate-700"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function Button({
   children,
   onClick,

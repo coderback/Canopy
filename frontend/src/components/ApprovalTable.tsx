@@ -1,8 +1,51 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { approveRun, type Proposal, type Run, type RowDecision } from "@/lib/api";
 import { Badge, Button, ConfidenceBadge, StatusPill } from "./ui";
+
+function SourceSummary({ run }: { run: Run }) {
+  if (run.kind === "ingest") {
+    const s = run.source_payload;
+    return (
+      <div className="border-b border-border bg-emerald-50/50 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-base">📄</span>
+          <span className="text-sm font-medium text-slate-800">{s.filename ?? "uploaded file"}</span>
+          {s.doc_type && <Badge tone="emerald">{s.doc_type}</Badge>}
+        </div>
+        {s.human_description && (
+          <p className="mt-1 text-sm text-slate-600">
+            <span className="font-medium text-emerald-800">Canopy inferred:</span>{" "}
+            {s.human_description}
+          </p>
+        )}
+        {s.caveats && s.caveats.length > 0 && (
+          <ul className="mt-1.5 space-y-0.5">
+            {s.caveats.map((c, i) => (
+              <li key={i} className="text-xs text-amber-700">
+                ⚠ {c}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+  // Propagation: show the one source change being fanned out.
+  const p = run.source_payload as Record<string, unknown>;
+  const code = typeof p.Code === "string" ? p.Code : null;
+  const name = typeof p.Name === "string" ? p.Name : null;
+  return (
+    <div className="border-b border-border bg-surface-sunken px-4 py-2.5">
+      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Source change</span>{" "}
+      <span className="text-sm text-slate-700">
+        {name ?? "change"}
+        {code ? ` · ${code}` : ""}
+      </span>
+    </div>
+  );
+}
 
 type Decision = "include" | "exclude";
 

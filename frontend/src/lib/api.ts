@@ -28,12 +28,30 @@ export type Proposal = {
   results: WriteResult[];
 };
 
+export type IngestIntent = {
+  site?: string | null;
+  description: string;
+  amount?: number | null;
+  direction?: string;
+  needs_review?: boolean;
+  review_reason?: string | null;
+};
+
+// For ingest runs the backend stores the file + what the AI inferred here.
+export type IngestSource = {
+  filename?: string;
+  doc_type?: string;
+  human_description?: string;
+  intents?: IngestIntent[];
+  caveats?: string[];
+};
+
 export type Run = {
   id: number;
-  kind: string;
+  kind: string; // propagation | ingest
   change_type: string | null;
   status: string; // proposed | approved | executing | completed | partial | failed
-  source_payload: Record<string, unknown>;
+  source_payload: Record<string, unknown> & IngestSource;
   created_at: string;
   approved_at: string | null;
   completed_at: string | null;
@@ -101,6 +119,31 @@ export const approveRun = (id: number, decisions: RowDecision[]) =>
     method: "POST",
     body: JSON.stringify({ decisions }),
   });
+
+// Multipart upload — must NOT set Content-Type by hand; the browser adds the
+// multipart boundary. So this bypasses `request` (which forces application/json).
+export async function ingestFile(file: File, targetEntityIds: number[]): Promise<Run> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("target_entity_ids", JSON.stringify(targetEntityIds));
+  let resp: Response;
+  try {
+    resp = await fetch(`${API_BASE}/ingest`, { method: "POST", body: form });
+  } catch {
+    throw new ApiError(0, `Cannot reach the Canopy backend at ${API_BASE}. Is it running?`);
+  }
+  if (!resp.ok) {
+    let detail = `${resp.status} ${resp.statusText}`;
+    try {
+      const body = await resp.json();
+      if (body?.detail) detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+    } catch {
+      /* keep default */
+    }
+    throw new ApiError(resp.status, detail);
+  }
+  return (await resp.json()) as Run;
+}
 
 export const seedDemo = () => request<Run>("/demo/seed", { method: "POST" });
 
