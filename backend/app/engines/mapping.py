@@ -123,6 +123,10 @@ def _referenced_account_codes(action: str, payload: dict) -> list[str]:
             details = payload.get(side)
             if isinstance(details, dict) and details.get("AccountCode") is not None:
                 codes.append(str(details["AccountCode"]))
+    elif action == "create-manual-journal":
+        for line in payload.get("JournalLines", []) or []:
+            if isinstance(line, dict) and line.get("AccountCode") is not None:
+                codes.append(str(line["AccountCode"]))
     return codes
 
 
