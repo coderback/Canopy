@@ -166,12 +166,12 @@ def seed_demo_ingest_run(db: Session) -> Run:
             mapped_payload={
                 "Narration": "ROLLER takings 2026-07-01 — Bristol",
                 "JournalLines": [
-                    {"LineAmount": 2735.50, "AccountCode": "610", "Description": "Takings receivable"},
+                    {"LineAmount": 2735.50, "AccountCode": "620", "Description": "Takings to be banked"},
                     {"LineAmount": -2735.50, "AccountCode": "200", "Description": "Sales"},
                 ],
             },
             confidence=0.97,
-            reasoning="Bristol has 200 Sales and 610 Accounts Receivable; booked the day's £2,735.50 takings as revenue.",
+            reasoning="Credited 200 Sales and debited 620 Prepayments (a non-system clearing account — Xero blocks manual journals to the Accounts Receivable control account) for the day's £2,735.50 takings.",
             needs_human=False,
             status="proposed",
         ),
@@ -182,12 +182,12 @@ def seed_demo_ingest_run(db: Session) -> Run:
             mapped_payload={
                 "Narration": "ROLLER takings 2026-07-01 — Guildford",
                 "JournalLines": [
-                    {"LineAmount": 2066.25, "AccountCode": "610", "Description": "Takings receivable"},
+                    {"LineAmount": 2066.25, "AccountCode": "620", "Description": "Takings to be banked"},
                     {"LineAmount": -2066.25, "AccountCode": "201", "Description": "Trading Income"},
                 ],
             },
             confidence=0.95,
-            reasoning="Guildford has no active 200; mapped revenue to 201 Trading Income, its equivalent revenue account. Debited 610 Accounts Receivable.",
+            reasoning="Guildford has no active 200; mapped revenue to 201 Trading Income, its equivalent revenue account. Debited 620 Prepayments (a non-system clearing account).",
             needs_human=False,
             status="proposed",
         ),

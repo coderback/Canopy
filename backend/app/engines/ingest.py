@@ -162,16 +162,61 @@ _JOURNAL_SYSTEM = (
     "2. Double entry: debits are POSITIVE LineAmount, credits are NEGATIVE, and all "
     "JournalLines MUST sum to exactly zero.\n"
     "3. Book revenue as a credit to a revenue/sales account and a matching debit to a "
-    "receivable/debtors or clearing account. Book a cost/stock consumption as a debit "
-    "to a cost/expense account and a matching credit. Choose the closest existing "
-    "accounts in THIS entity's snapshot.\n"
-    "4. Do NOT post to bank accounts (AccountType BANK) — Xero rejects manual journals "
-    "against bank accounts. Prefer receivable/clearing/GL accounts.\n"
+    "non-system current-asset/clearing account (e.g. a 'Prepayments' or clearing "
+    "account). Book a cost/stock consumption as a debit to a cost/expense account and "
+    "a matching credit. Choose the closest existing accounts in THIS entity's snapshot.\n"
+    "4. Xero REJECTS manual journals posted to bank accounts (Type BANK) or to any "
+    "account carrying a SystemAccount value (e.g. Accounts Receivable/DEBTORS, Accounts "
+    "Payable/CREDITORS, VAT/GST, Rounding, Retained Earnings). NEVER use those. Use "
+    "ordinary GL accounts only — revenue, expense, or a non-system current asset such "
+    "as Prepayments. For POS takings: credit a revenue account (e.g. 200 Sales) and "
+    "debit a non-system current-asset/clearing account (e.g. 620 Prepayments). If this "
+    "entity has no postable non-system account for the balancing side, refuse "
+    "(needs_human=true).\n"
     "5. If any intent is flagged needs_review (a missing/ambiguous value), exclude that "
     "line and set needs_human=true so a person decides, rather than booking a guess.\n"
     "6. Set confidence honestly. Emit exactly one proposal via the tool. You propose; a "
     "human approves; deterministic code writes."
 )
+
+
+def _nonpostable_accounts(snapshot: dict) -> dict[str, str]:
+    """Map code -> reason for accounts a manual journal cannot post to: bank
+    accounts (Type BANK) and any system control account (SystemAccount set)."""
+    out: dict[str, str] = {}
+    for a in snapshot.get("accounts", []) or []:
+        if not isinstance(a, dict) or a.get("Code") is None:
+            continue
+        code = str(a["Code"])
+        if a.get("Type") == "BANK":
+            out[code] = f"{a.get('Name')} is a bank account"
+        elif a.get("SystemAccount"):
+            out[code] = f"{a.get('Name')} is a system account ({a.get('SystemAccount')})"
+    return out
+
+
+def _guard_journal_postable(proposal: EngineProposal, entity: Entity, snapshot: dict) -> None:
+    """Deterministic backstop: Xero 400s a manual journal whose line posts to a bank
+    or system account (Accounts Receivable/DEBTORS etc.). The model is told to avoid
+    them, but a miss would fail at write time — force needs_human so it blocks approval
+    instead, mirroring the account-code guard."""
+    if proposal.action != "create-manual-journal":
+        return
+    blocked = _nonpostable_accounts(snapshot)
+    hit = []
+    for line in proposal.mapped_payload.get("JournalLines", []) or []:
+        if isinstance(line, dict) and line.get("AccountCode") is not None:
+            code = str(line["AccountCode"])
+            if code in blocked:
+                hit.append(f"{code} ({blocked[code]})")
+    if hit and not proposal.needs_human:
+        proposal.needs_human = True
+        proposal.confidence = min(proposal.confidence, 0.4)
+        proposal.reasoning += (
+            f" [Canopy guard: manual journals cannot post to {'; '.join(sorted(set(hit)))} "
+            f"in {entity.name} — Xero rejects bank/system accounts; flagged for human review "
+            f"rather than a guaranteed write failure.]"
+        )
 
 
 def _build_journal_user_message(
@@ -210,4 +255,6 @@ async def map_ingest_to_journal(
         )
     # Reuse the propagation backstop: every referenced code must exist in the target.
     _guard_referenced_codes(proposal, entity, snapshot)
+    # And that no line posts to a bank/system account Xero would reject.
+    _guard_journal_postable(proposal, entity, snapshot)
     return proposal

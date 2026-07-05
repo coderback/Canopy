@@ -26,7 +26,9 @@ _FETCHERS = {
 def _slim(kind: str, records: list[dict]) -> list[dict]:
     """Keep only the fields the mapping engine needs — snapshots go into prompts."""
     if kind == "accounts":
-        keys = ("Code", "Name", "Type", "TaxType", "Status", "Description")
+        # SystemAccount (DEBTORS/CREDITORS/GST/…) + Type=BANK mark accounts a
+        # manual journal cannot post to — the ingest engine/guard needs to see them.
+        keys = ("Code", "Name", "Type", "TaxType", "Status", "Description", "SystemAccount")
     elif kind == "tax_rates":
         keys = ("Name", "TaxType", "EffectiveRate", "Status", "CanApplyToExpenses", "CanApplyToRevenue")
     elif kind == "contacts":

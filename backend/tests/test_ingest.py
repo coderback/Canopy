@@ -38,7 +38,7 @@ def snap(accounts=None, tax_rates=None):
 
 REVENUE_ACCOUNTS = [
     {"Code": "200", "Name": "Sales", "Type": "REVENUE", "Status": "ACTIVE"},
-    {"Code": "610", "Name": "Accounts Receivable", "Type": "CURRENT", "Status": "ACTIVE"},
+    {"Code": "620", "Name": "Prepayments", "Type": "CURRENT", "Status": "ACTIVE"},  # postable, non-system
 ]
 
 
@@ -138,7 +138,7 @@ BRISTOL_INTENT = IngestIntent(site="Bristol", description="Daily takings", amoun
 async def test_journal_is_balanced_and_uses_real_codes():
     entity = Entity(tenant_id="t-bristol", name="Demo Bristol Ltd")
     lines = [
-        {"LineAmount": 2735.50, "AccountCode": "610", "Description": "Takings receivable"},
+        {"LineAmount": 2735.50, "AccountCode": "620", "Description": "Takings to be banked"},
         {"LineAmount": -2735.50, "AccountCode": "200", "Description": "Sales"},
     ]
     classification = IngestClassification(doc_type="POS", human_description="x")
@@ -149,7 +149,7 @@ async def test_journal_is_balanced_and_uses_real_codes():
     assert prop.needs_human is False
     # The golden payload is write-valid: balances to zero on codes that exist here.
     normalised = validate_payload("create-manual-journal", prop.mapped_payload)
-    assert {ln["AccountCode"] for ln in normalised["JournalLines"]} == {"200", "610"}
+    assert {ln["AccountCode"] for ln in normalised["JournalLines"]} == {"200", "620"}
 
 
 @pytest.mark.asyncio
@@ -169,12 +169,54 @@ async def test_journal_guard_flags_nonexistent_code():
 
 
 @pytest.mark.asyncio
+async def test_journal_guard_flags_posting_to_system_account():
+    """Xero rejects manual journals posted to bank/system accounts. If the model
+    debits the Accounts Receivable control account (SystemAccount=DEBTORS), the guard
+    must force needs_human so it blocks approval instead of failing at write time."""
+    entity = Entity(tenant_id="t-sys", name="Demo Bristol Ltd")
+    accounts = [
+        {"Code": "200", "Name": "Sales", "Type": "REVENUE", "Status": "ACTIVE"},
+        {"Code": "610", "Name": "Accounts Receivable", "Type": "CURRENT", "SystemAccount": "DEBTORS"},
+    ]
+    lines = [
+        {"LineAmount": 100.0, "AccountCode": "610", "Description": "Takings receivable"},  # blocked
+        {"LineAmount": -100.0, "AccountCode": "200", "Description": "Sales"},
+    ]
+    classification = IngestClassification(doc_type="POS", human_description="x")
+    prop = await map_ingest_to_journal(
+        journal_stub(lines), classification, [BRISTOL_INTENT], entity, snap(accounts=accounts)
+    )
+    assert prop.needs_human is True
+    assert prop.confidence <= 0.4
+    assert "610" in prop.reasoning and "DEBTORS" in prop.reasoning
+
+
+@pytest.mark.asyncio
+async def test_journal_to_prepayments_and_sales_is_accepted():
+    """The postable pairing (Dr 620 Prepayments / Cr 200 Sales) passes both guards."""
+    entity = Entity(tenant_id="t-ok", name="Demo Bristol Ltd")
+    accounts = [
+        {"Code": "200", "Name": "Sales", "Type": "REVENUE", "Status": "ACTIVE"},
+        {"Code": "620", "Name": "Prepayments", "Type": "CURRENT", "Status": "ACTIVE"},
+    ]
+    lines = [
+        {"LineAmount": 100.0, "AccountCode": "620", "Description": "Takings to be banked"},
+        {"LineAmount": -100.0, "AccountCode": "200", "Description": "Sales"},
+    ]
+    classification = IngestClassification(doc_type="POS", human_description="x")
+    prop = await map_ingest_to_journal(
+        journal_stub(lines), classification, [BRISTOL_INTENT], entity, snap(accounts=accounts)
+    )
+    assert prop.needs_human is False
+
+
+@pytest.mark.asyncio
 async def test_missing_value_intent_forces_needs_human():
     """The refuse-don't-guess beat: a source row with a missing amount must block
     approval even if the model's journal looked confident."""
     entity = Entity(tenant_id="t-y", name="Org Y")
     lines = [
-        {"LineAmount": 50.0, "AccountCode": "610", "Description": "x"},
+        {"LineAmount": 50.0, "AccountCode": "620", "Description": "x"},
         {"LineAmount": -50.0, "AccountCode": "200", "Description": "y"},
     ]
     flagged = IngestIntent(
@@ -219,12 +261,12 @@ def combined_stub():
             "mapped_payload": {
                 "Narration": "POS revenue",
                 "JournalLines": [
-                    {"LineAmount": 100.0, "AccountCode": "610", "Description": "Receivable"},
+                    {"LineAmount": 100.0, "AccountCode": "620", "Description": "Takings to be banked"},
                     {"LineAmount": -100.0, "AccountCode": "200", "Description": "Sales"},
                 ],
             },
             "confidence": 0.9,
-            "reasoning": "Credited 200, debited 610.",
+            "reasoning": "Credited 200, debited 620 Prepayments.",
             "needs_human": False,
         }
 
