@@ -50,7 +50,7 @@ These have each caught the model being confidently wrong in live runs against re
 
 ## Status
 
-Phase 1 — **multi-entity propagation** — is complete and proven end-to-end against real Xero
+**Phase 1 — multi-entity propagation** is complete and proven end-to-end against real Xero
 trial organisations (written, then read back to confirm), for all four change types:
 
 | Change type | Live-proven | Test |
@@ -60,11 +60,22 @@ trial organisations (written, then read back to confirm), for all four change ty
 | Contact (dedup link-vs-create) | ✅ | ✅ |
 | Tracking category (+ options) | ✅ | ✅ |
 
-**28 backend tests pass** (credential-free — the LLM and Xero client are injected seams).
+**Phase 2 — universal file ingest** is complete: upload *any* CSV/JSON/xlsx export
+(`POST /ingest`), the LLM infers what the file *is* — no per-source connector code — and
+normalises rows to per-entity manual-journal proposals in the same approval table. Unmappable
+columns are flagged `needs_human`; nothing is written. Demo payloads: a messy Sortly-style
+stock count and a Roller-style revenue export (`seed/fixtures/`).
 
-Roadmap: **Phase 2** — universal file ingest (upload CSV/JSON/xlsx, the LLM infers what the
-file *is*, normalises to per-entity manual journals); **Phase 3** — PO-to-Bill (drafts only,
-never auto-marking a PO as billed).
+**Phase 3 — PO-to-Bill** was scoped (drafts only, never auto-marking a PO as billed) and
+consciously cut to keep the two flagships demo-frozen.
+
+**Phase 4 — toolkit contribution + polish** is in progress: see
+[Toolkit contribution](#toolkit-contribution), `docs/architecture.md`, and `docs/pitch.md`.
+Entity health now includes **cross-org drift detection** — each org's header pill flags
+account codes that exist in most orgs in the group but are missing there, straight from the
+cached snapshots (`GET /entities` → `health.drift`).
+
+**41 backend tests pass** (credential-free — the LLM and Xero client are injected seams).
 
 ---
 
@@ -111,9 +122,10 @@ docker-compose.yml     full stack (backend :8000 + frontend :3000)
 | `GET`  | `/entities` | connected orgs (+ snapshot age) |
 | `GET`  | `/entities/{id}/organisation` | live read proving the connection |
 | `POST` | `/changes` | `{change_type, payload, target_entity_ids}` → fans out mapping, returns proposals |
+| `POST` | `/ingest` | multipart file (CSV/JSON/xlsx) → schema inference → per-entity journal proposals |
 | `GET`  | `/runs`, `/runs/{id}` | run history / detail |
 | `POST` | `/runs/{id}/approve` | per-row include/exclude/edit → execute → per-row results |
-| `POST` | `/demo/seed` | dev-only offline demo run (gated by `DEMO_MODE`) |
+| `POST` | `/demo/seed`, `/demo/seed-ingest` | dev-only offline demo runs (gated by `DEMO_MODE`) |
 
 ---
 
@@ -171,6 +183,22 @@ cd backend && python -m pytest -q     # 28 passing, no credentials required
   isn't a defence"*: every write is explainable and audited.
 - **Human-in-the-loop is mandatory** — `needs_human` is a first-class blocking state, not an error.
 - **No money movement; full run-history audit** of every request and response.
+
+---
+
+## Toolkit contribution
+
+While building Canopy we found that Xero's official MCP server
+([`XeroAPI/xero-mcp-server`](https://github.com/XeroAPI/xero-mcp-server)) hardcodes the
+**first** tenant returned by the connections endpoint — in both bearer-token and
+client-credentials modes. With one app or token authorised for several organisations, every
+server instance silently operates on org #1 with no way to target another.
+
+We fixed it: an optional `XERO_TENANT_ID` environment variable honoured by both auth modes,
+failing loudly (with the list of available tenant IDs) if it doesn't match an authorised
+connection rather than silently falling back. Non-breaking when unset, covered by unit tests.
+
+**Upstream PR:** _link pending — branch `feat/xero-tenant-id-override`._
 
 ---
 

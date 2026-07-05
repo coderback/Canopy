@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import Entity, Snapshot
+from ..snapshots import snapshot_health
 from ..xero.client import xero_api
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/entities", tags=["entities"])
 @router.get("")
 def list_entities(db: Session = Depends(get_db)):
     entities = db.query(Entity).filter_by(active=True).all()
+    health = snapshot_health(db, entities)
     out = []
     for e in entities:
         latest = (
@@ -26,6 +28,7 @@ def list_entities(db: Session = Depends(get_db)):
                 "name": e.name,
                 "connected_at": e.connected_at.isoformat() if e.connected_at else None,
                 "snapshot_age": latest.fetched_at.isoformat() if latest else None,
+                "health": health[e.id],
             }
         )
     return out

@@ -58,12 +58,21 @@ export type Run = {
   proposals?: Proposal[];
 };
 
+export type EntityHealth = {
+  snapshots: Record<string, { count: number; fetched_at: string }>;
+  kinds_cached: number;
+  kinds_total: number;
+  drift: { code: string; name: string; present_in: number; of: number }[];
+  drift_total: number;
+};
+
 export type Entity = {
   id: number;
   tenant_id: string;
   name: string;
   connected_at: string | null;
   snapshot_age: string | null;
+  health: EntityHealth;
 };
 
 export type RowDecision = {

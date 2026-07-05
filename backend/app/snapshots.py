@@ -74,3 +74,64 @@ async def get_snapshot(
 async def get_entity_context(db: Session, api: XeroApi, entity: Entity) -> dict[str, list[dict]]:
     """Everything the mapping engine needs to reason about one target entity."""
     return {kind: await get_snapshot(db, api, entity, kind) for kind in KINDS}
+
+
+def snapshot_health(db: Session, entities: list[Entity]) -> dict[int, dict]:
+    """Per-entity snapshot coverage + cross-entity account-code drift.
+
+    Reads only cached Snapshot rows (no Xero calls): for each entity, which
+    kinds are cached and how fresh; plus which active account codes exist in a
+    majority of snapshot-bearing orgs but are missing here — the "org B has no
+    200" signal, surfaced without anyone running a propagation first.
+    """
+    ids = [e.id for e in entities]
+    rows = db.query(Snapshot).filter(Snapshot.entity_id.in_(ids)).all() if ids else []
+    by_entity: dict[int, dict[str, Snapshot]] = {}
+    for row in rows:
+        by_entity.setdefault(row.entity_id, {})[row.kind] = row
+
+    codes: dict[int, dict[str, str]] = {}
+    for eid, kinds in by_entity.items():
+        acc = kinds.get("accounts")
+        if acc is not None:
+            codes[eid] = {
+                r["Code"]: r.get("Name", "")
+                for r in acc.data
+                if r.get("Code") and r.get("Status", "ACTIVE") == "ACTIVE"
+            }
+
+    total = len(codes)
+    presence: dict[str, set[int]] = {}
+    names: dict[str, str] = {}
+    for eid, cmap in codes.items():
+        for code, name in cmap.items():
+            presence.setdefault(code, set()).add(eid)
+            names.setdefault(code, name)
+
+    health: dict[int, dict] = {}
+    for e in entities:
+        kinds = by_entity.get(e.id, {})
+        drift = []
+        if e.id in codes and total >= 2:
+            drift = [
+                {
+                    "code": code,
+                    "name": names[code],
+                    "present_in": len(present),
+                    "of": total,
+                }
+                for code, present in presence.items()
+                if e.id not in present and len(present) > total / 2
+            ]
+            drift.sort(key=lambda d: (-d["present_in"], d["code"]))
+        health[e.id] = {
+            "snapshots": {
+                kind: {"count": len(row.data), "fetched_at": row.fetched_at.isoformat()}
+                for kind, row in kinds.items()
+            },
+            "kinds_cached": len(kinds),
+            "kinds_total": len(KINDS),
+            "drift": drift[:5],
+            "drift_total": len(drift),
+        }
+    return health
