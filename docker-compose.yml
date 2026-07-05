@@ -1,0 +1,33 @@
+# Canopy — full stack. Backend (FastAPI :8000) + frontend (Next.js :3000).
+#   docker compose up --build
+# Secrets (Xero + LLM keys) come from backend/.env — never baked into an image.
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override the .env sqlite path onto the persisted volume. compose
+      # `environment` wins over `env_file`, so the token DB survives restarts.
+      DATABASE_URL: sqlite:////data/canopy.sqlite3
+      FRONTEND_ORIGIN: http://localhost:3000
+    volumes:
+      - canopy-data:/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Host-reachable backend URL, inlined into the client bundle at build time.
+        NEXT_PUBLIC_API_BASE: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  canopy-data:

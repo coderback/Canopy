@@ -89,9 +89,14 @@ _TYPE_GUIDANCE = {
     ),
     "account": (
         "Change type: ACCOUNT (action create-account). Propagate the new account. "
-        "Keep Code and Name; map Type to a valid Xero AccountType and TaxType to one "
-        "present in this entity's tax_rates. If the Code already exists here, refuse "
-        "(needs_human=true) so a human decides."
+        "Keep Code, Name, AND Type EXACTLY as given in the source. AccountType is a "
+        "FIXED GLOBAL Xero enum (e.g. EXPENSE, OVERHEADS, REVENUE, DIRECTCOSTS, "
+        "CURRLIAB) that is valid in every organisation — it is NOT per-entity "
+        "reference data, so NEVER remap it to a different type to match local "
+        "convention (e.g. do not turn EXPENSE into OVERHEADS). Only TaxType must be "
+        "mapped to one present in THIS entity's tax_rates; if none fits, set "
+        "needs_human=true. If the Code already exists here, refuse (needs_human=true) "
+        "so a human decides."
     ),
     "contact": (
         "Change type: CONTACT (action create-contact). Deduplicate against this "
