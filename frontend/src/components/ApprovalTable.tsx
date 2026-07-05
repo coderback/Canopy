@@ -244,6 +244,8 @@ export default function ApprovalTable({
         </span>
       </div>
 
+      <SourceSummary run={run} />
+
       <div className="divide-y divide-border">
         {highConf.length > 0 && (
           <div>
