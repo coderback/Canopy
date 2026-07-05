@@ -95,8 +95,9 @@ _TYPE_GUIDANCE = {
         "reference data, so NEVER remap it to a different type to match local "
         "convention (e.g. do not turn EXPENSE into OVERHEADS). Only TaxType must be "
         "mapped to one present in THIS entity's tax_rates; if none fits, set "
-        "needs_human=true. If the Code already exists here, refuse (needs_human=true) "
-        "so a human decides."
+        "needs_human=true. Xero requires BOTH the account Code AND the account Name "
+        "to be unique within an organisation, so if an account with this Code OR this "
+        "Name already exists here, refuse (needs_human=true) so a human decides."
     ),
     "contact": (
         "Change type: CONTACT (action create-contact). Deduplicate against this "
@@ -108,7 +109,8 @@ _TYPE_GUIDANCE = {
     "tracking": (
         "Change type: TRACKING (action create-tracking-category). If a category with "
         "this Name already exists here, refuse (needs_human=true). Otherwise propose "
-        "the category with its Options."
+        "the category. Options MUST be a JSON array of plain strings, e.g. "
+        '["North", "South"] — not objects.'
     ),
 }
 
@@ -150,6 +152,34 @@ def _guard_referenced_codes(proposal: EngineProposal, entity: Entity, snapshot: 
         )
 
 
+def _guard_account_collisions(proposal: EngineProposal, entity: Entity, snapshot: dict) -> None:
+    """Deterministic backstop for account propagation: Xero rejects a create if
+    the Code OR the Name already exists in the org (400 ValidationException). The
+    LLM is told to refuse on either, but a missed name clash would fail at write
+    time — force needs_human so it blocks approval instead, mirroring the code guard.
+    """
+    if proposal.action != "create-account":
+        return
+    accounts = [a for a in snapshot.get("accounts", []) if isinstance(a, dict)]
+    existing_codes = {str(a.get("Code")) for a in accounts if a.get("Code") is not None}
+    existing_names = {str(a.get("Name")).strip().lower() for a in accounts if a.get("Name")}
+    code = proposal.mapped_payload.get("Code")
+    name = proposal.mapped_payload.get("Name")
+    clash: list[str] = []
+    if code is not None and str(code) in existing_codes:
+        clash.append(f"code {code}")
+    if name and str(name).strip().lower() in existing_names:
+        clash.append(f"name {name!r}")
+    if clash and not proposal.needs_human:
+        proposal.needs_human = True
+        proposal.confidence = min(proposal.confidence, 0.4)
+        proposal.reasoning += (
+            f" [Canopy guard: {' and '.join(clash)} already exists in {entity.name}'s "
+            f"chart — Xero requires unique account code and name, so this would fail on "
+            f"write; flagged for human review rather than a guaranteed write failure.]"
+        )
+
+
 def _build_user_message(change_type: str, source_payload: dict, entity: Entity, snapshot: dict) -> str:
     return (
         f"{_TYPE_GUIDANCE[change_type]}\n\n"
@@ -176,4 +206,5 @@ async def map_change(
     raw = await complete(system, user, PROPOSAL_TOOL_SCHEMA)
     proposal = EngineProposal.model_validate(raw)
     _guard_referenced_codes(proposal, entity, snapshot)
+    _guard_account_collisions(proposal, entity, snapshot)
     return proposal

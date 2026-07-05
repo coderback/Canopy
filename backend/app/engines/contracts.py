@@ -74,6 +74,24 @@ class TrackingCategoryPayload(BaseModel):
     Name: str
     Options: list[str] = []
 
+    @field_validator("Options", mode="before")
+    @classmethod
+    def _coerce_options(cls, v):
+        """The model sometimes emits Options as Xero's native [{"Name": "Sales"}]
+        shape instead of ["Sales"]. Normalise both to a plain list of strings so a
+        harmless format choice can't fail the write."""
+        if isinstance(v, list):
+            out = []
+            for o in v:
+                if isinstance(o, dict):
+                    name = o.get("Name", o.get("name"))
+                    if name is not None:
+                        out.append(str(name))
+                elif o is not None:
+                    out.append(str(o))
+            return out
+        return v
+
 
 class JournalLine(BaseModel):
     LineAmount: float

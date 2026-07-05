@@ -21,6 +21,20 @@ def test_account_requires_code_name_type():
         validate_payload("create-account", {"Code": "492", "Name": "Site Repairs"})
 
 
+def test_tracking_options_coerced_from_dict_form():
+    # The model sometimes emits Xero's native [{"Name": "Sales"}] shape; both that
+    # and the plain-string form must normalise to ["Sales", ...] rather than fail.
+    dict_form = validate_payload(
+        "create-tracking-category",
+        {"Name": "Department", "Options": [{"Name": "Sales"}, {"Name": "Ops"}]},
+    )
+    assert dict_form["Options"] == ["Sales", "Ops"]
+    str_form = validate_payload(
+        "create-tracking-category", {"Name": "Department", "Options": ["Sales", "Ops"]}
+    )
+    assert str_form["Options"] == ["Sales", "Ops"]
+
+
 def test_manual_journal_must_balance():
     lines_ok = [
         {"LineAmount": 120.5, "AccountCode": "300"},

@@ -175,6 +175,89 @@ async def test_guard_passes_when_all_codes_exist():
 
 
 @pytest.mark.asyncio
+async def test_tracking_creates_new_category_with_options():
+    """A tracking category not already present is propagated with its Options intact."""
+
+    async def complete(system, user, schema):
+        return {
+            "action": "create-tracking-category",
+            "mapped_payload": {"Name": "Department", "Options": ["Sales", "Ops"]},
+            "confidence": 0.95,
+            "reasoning": "No category named Department exists here; creating with its options.",
+            "needs_human": False,
+        }
+
+    e = _entity("Org H", "tenant-h")
+    snapshot = snap(tracking=[])
+    prop = await map_change(complete, "tracking", {"Name": "Department", "Options": ["Sales", "Ops"]}, e, snapshot)
+    assert prop.action == "create-tracking-category"
+    assert prop.needs_human is False
+    assert prop.mapped_payload["Options"] == ["Sales", "Ops"]
+
+
+@pytest.mark.asyncio
+async def test_tracking_refuses_when_category_name_exists():
+    """Xero won't create a second category with the same Name — refuse rather than fail."""
+
+    async def complete(system, user, schema):
+        return {
+            "action": "create-tracking-category",
+            "mapped_payload": {"Name": "Region"},
+            "confidence": 0.2,
+            "reasoning": "A tracking category named Region already exists here; refusing.",
+            "needs_human": True,
+        }
+
+    e = _entity("Org I", "tenant-i")
+    snapshot = snap(tracking=[{"Name": "Region", "Options": [{"Name": "North"}]}])
+    prop = await map_change(complete, "tracking", {"Name": "Region", "Options": ["North", "South"]}, e, snapshot)
+    assert prop.needs_human is True
+
+
+@pytest.mark.asyncio
+async def test_account_guard_flags_duplicate_name():
+    """Xero requires unique account Name (not just Code). If the model proposes a
+    create whose Name already exists here, the guard must force needs_human so it
+    can't fail at write time."""
+
+    async def dup_name(system, user, schema):
+        return {
+            "action": "create-account",
+            "mapped_payload": {"Code": "8100", "Name": "Software Subscriptions", "Type": "EXPENSE"},
+            "confidence": 0.98,
+            "reasoning": "Code 8100 is free, creating.",  # missed the name clash
+            "needs_human": False,
+        }
+
+    entity = _entity("Org F", "tenant-f")
+    snapshot = snap(
+        accounts=[{"Code": "897", "Name": "Software Subscriptions", "Type": "EXPENSE", "Status": "ACTIVE"}]
+    )
+    prop = await map_change(dup_name, "account", {"Code": "8100", "Name": "Software Subscriptions", "Type": "EXPENSE"}, entity, snapshot)
+    assert prop.needs_human is True
+    assert prop.confidence <= 0.4
+    assert "Software Subscriptions" in prop.reasoning
+
+
+@pytest.mark.asyncio
+async def test_account_guard_passes_when_code_and_name_free():
+    async def fresh(system, user, schema):
+        return {
+            "action": "create-account",
+            "mapped_payload": {"Code": "8200", "Name": "Cloud Software Licences", "Type": "EXPENSE"},
+            "confidence": 0.98,
+            "reasoning": "Both code and name are free here.",
+            "needs_human": False,
+        }
+
+    entity = _entity("Org G", "tenant-g")
+    snapshot = snap(accounts=[{"Code": "897", "Name": "Software Subscriptions", "Type": "EXPENSE", "Status": "ACTIVE"}])
+    prop = await map_change(fresh, "account", {"Code": "8200", "Name": "Cloud Software Licences", "Type": "EXPENSE"}, entity, snapshot)
+    assert prop.needs_human is False
+    assert prop.confidence == 0.98
+
+
+@pytest.mark.asyncio
 async def test_malformed_llm_response_raises():
     async def bad(system, user, schema):
         return {  # confidence out of range → EngineProposal rejects it
