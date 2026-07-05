@@ -124,3 +124,85 @@ def seed_demo_run(db: Session) -> Run:
     db.commit()
     db.refresh(run)
     return run
+
+
+# --- Universal ingest demo (Bounty 02), fully offline ----------------------
+
+DEMO_INGEST_SOURCE = {
+    "filename": "roller_revenue.csv",
+    "doc_type": "POS daily revenue settlement",
+    "human_description": (
+        "A daily takings export from a ROLLER POS system — book each venue's card + "
+        "cash takings for 2026-07-01 as revenue, one manual journal per entity."
+    ),
+    "intents": [
+        {"site": "Bristol", "description": "Card + cash takings", "amount": 2735.50, "direction": "revenue", "needs_review": False, "review_reason": None},
+        {"site": "Guildford", "description": "Card + cash takings", "amount": 2066.25, "direction": "revenue", "needs_review": False, "review_reason": None},
+        {"site": "Cardiff", "description": "Card + voucher takings", "amount": 1629.00, "direction": "revenue", "needs_review": True, "review_reason": "no active revenue account in this entity to book against"},
+    ],
+    "caveats": ["Cardiff has no active revenue account to book takings against — flagged for review."],
+}
+
+
+def seed_demo_ingest_run(db: Session) -> Run:
+    """One ingest run retelling the flagship states as manual journals: a clean
+    booking, a revenue-account remap (no 200 → 201), and a refusal. No LLM, no
+    Xero — approval still writes via DemoXeroApi with fake ids."""
+    a, b, c = ensure_demo_entities(db)
+    run = Run(
+        kind="ingest",
+        change_type="manual_journal",
+        source_payload=DEMO_INGEST_SOURCE,
+        status="proposed",
+    )
+    db.add(run)
+    db.flush()
+
+    proposals = [
+        Proposal(
+            run_id=run.id,
+            entity_id=a.id,
+            action="create-manual-journal",
+            mapped_payload={
+                "Narration": "ROLLER takings 2026-07-01 — Bristol",
+                "JournalLines": [
+                    {"LineAmount": 2735.50, "AccountCode": "610", "Description": "Takings receivable"},
+                    {"LineAmount": -2735.50, "AccountCode": "200", "Description": "Sales"},
+                ],
+            },
+            confidence=0.97,
+            reasoning="Bristol has 200 Sales and 610 Accounts Receivable; booked the day's £2,735.50 takings as revenue.",
+            needs_human=False,
+            status="proposed",
+        ),
+        Proposal(
+            run_id=run.id,
+            entity_id=b.id,
+            action="create-manual-journal",
+            mapped_payload={
+                "Narration": "ROLLER takings 2026-07-01 — Guildford",
+                "JournalLines": [
+                    {"LineAmount": 2066.25, "AccountCode": "610", "Description": "Takings receivable"},
+                    {"LineAmount": -2066.25, "AccountCode": "201", "Description": "Trading Income"},
+                ],
+            },
+            confidence=0.95,
+            reasoning="Guildford has no active 200; mapped revenue to 201 Trading Income, its equivalent revenue account. Debited 610 Accounts Receivable.",
+            needs_human=False,
+            status="proposed",
+        ),
+        Proposal(
+            run_id=run.id,
+            entity_id=c.id,
+            action="create-manual-journal",
+            mapped_payload={"Narration": "ROLLER takings 2026-07-01 — Cardiff"},
+            confidence=0.2,
+            reasoning="Cardiff has no active revenue account to book the takings against. Refusing rather than guessing a code — a human must decide.",
+            needs_human=True,
+            status="proposed",
+        ),
+    ]
+    db.add_all(proposals)
+    db.commit()
+    db.refresh(run)
+    return run

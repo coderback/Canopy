@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ingestFile, type Entity, type Run } from "@/lib/api";
+import { ingestFile, seedDemoIngest, type Entity, type Run } from "@/lib/api";
 import { Button } from "./ui";
 
 const ACCEPT = ".csv,.json,.xlsx,.xlsm";
@@ -48,6 +48,18 @@ export default function IngestForm({
     setBusy(true);
     try {
       onRun(await ingestFile(file, selected));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadDemo() {
+    setError(null);
+    setBusy(true);
+    try {
+      onRun(await seedDemoIngest());
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -128,9 +140,12 @@ export default function IngestForm({
 
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
 
-      <div className="mt-3">
+      <div className="mt-3 flex items-center gap-2">
         <Button onClick={submit} disabled={busy || entities.length === 0}>
           {busy ? "Inferring…" : "Infer & propose"}
+        </Button>
+        <Button variant="ghost" onClick={loadDemo} disabled={busy} className="!px-2.5 !py-2 text-xs">
+          Load demo ingest
         </Button>
       </div>
     </div>

@@ -146,5 +146,6 @@ export async function ingestFile(file: File, targetEntityIds: number[]): Promise
 }
 
 export const seedDemo = () => request<Run>("/demo/seed", { method: "POST" });
+export const seedDemoIngest = () => request<Run>("/demo/seed-ingest", { method: "POST" });
 
 export { ApiError };
