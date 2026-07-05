@@ -12,11 +12,14 @@ class Settings(BaseSettings):
     xero_redirect_uri: str = "http://localhost:8000/auth/xero/callback"
     # Only request scopes the app has enabled in its Xero portal config, or the
     # authorize call fails with `invalid_scope`. Phase 1 (item/account/contact/
-    # tracking) needs only settings + contacts. Add `accounting.transactions` here
-    # once it's enabled on the app (Phase 3: bills, manual journals, purchase orders).
+    # tracking) needs settings + contacts. Phase 2 universal ingest writes manual
+    # journals, which require `accounting.transactions` — enable it on the app in
+    # the Xero portal Configuration, then re-consent (GET /auth/xero/connect) so the
+    # stored token carries it, or manual-journal writes 403. (Same scope later
+    # unlocks Phase 3 bills + purchase orders.)
     xero_scopes: str = (
         "offline_access openid profile email "
-        "accounting.settings accounting.contacts"
+        "accounting.settings accounting.contacts accounting.transactions"
     )
 
     # LLM = Azure AI Foundry via the OpenAI-compatible SDK (mapping/ingest/matching
