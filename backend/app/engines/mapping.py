@@ -68,18 +68,24 @@ _BASE_SYSTEM = (
     "2. Return codes/ids exactly as they appear in the provided snapshot.\n"
     "3. Emit exactly one proposal via the emit_proposal tool. You propose; a human "
     "approves; deterministic code writes. You never write to Xero yourself.\n"
-    "4. Set confidence honestly: high only when an exact, unambiguous target exists."
+    "4. Set confidence honestly: high only when an exact, unambiguous target exists.\n"
+    "5. Self-consistency check before you answer: EVERY account code and tax type in "
+    "mapped_payload must appear verbatim in this entity's snapshot. If your reasoning "
+    "says you remapped a code (e.g. 300 -> 310), the payload MUST contain the remapped "
+    "code (310), never the original source code."
 )
 
 _TYPE_GUIDANCE = {
     "item": (
-        "Change type: ITEM (action create-item). Map SalesDetails.AccountCode and "
-        "TaxType (and PurchaseDetails if present) to codes/tax types that exist in "
-        "this entity's accounts/tax_rates. If the source sells to '200 Sales' but "
-        "this entity has no active 200, map to the equivalent active revenue account "
-        "(e.g. '201 Trading Income'). If this entity has NO suitable active revenue "
-        "account, refuse (needs_human=true). Keep the item Code and Name identical to "
-        "the source."
+        "Change type: ITEM (action create-item). Map BOTH SalesDetails and "
+        "PurchaseDetails the same way: their AccountCode and TaxType must be codes that "
+        "exist in this entity's accounts/tax_rates. If the source sells to '200 Sales' "
+        "but this entity has no active 200, map to the equivalent active revenue account "
+        "(e.g. '201 Trading Income'). If the source purchases to '300' and no active 300 "
+        "exists, map to the equivalent active direct-cost/expense account (e.g. '310 Cost "
+        "of Goods Sold') AND put that remapped code in PurchaseDetails.AccountCode. If an "
+        "entity has NO suitable active account for a side, refuse (needs_human=true). Keep "
+        "the item Code and Name identical to the source."
     ),
     "account": (
         "Change type: ACCOUNT (action create-account). Propagate the new account. "
@@ -100,6 +106,43 @@ _TYPE_GUIDANCE = {
         "the category with its Options."
     ),
 }
+
+
+def _referenced_account_codes(action: str, payload: dict) -> list[str]:
+    """Account codes the payload will write against — must exist in the target."""
+    codes: list[str] = []
+    if action == "create-item":
+        for side in ("SalesDetails", "PurchaseDetails"):
+            details = payload.get(side)
+            if isinstance(details, dict) and details.get("AccountCode") is not None:
+                codes.append(str(details["AccountCode"]))
+    return codes
+
+
+def _snapshot_account_codes(snapshot: dict) -> set[str]:
+    return {
+        str(a["Code"])
+        for a in snapshot.get("accounts", [])
+        if isinstance(a, dict) and a.get("Code") is not None
+    }
+
+
+def _guard_referenced_codes(proposal: EngineProposal, entity: Entity, snapshot: dict) -> None:
+    """Deterministic backstop: the LLM may reason correctly but emit a payload that
+    references a code not in the target (observed with gpt-5.4-mini leaving a source
+    code in PurchaseDetails despite remapping it in prose). Any such code can't be
+    written — force needs_human so it blocks approval instead of failing at write time.
+    """
+    known = _snapshot_account_codes(snapshot)
+    missing = [c for c in _referenced_account_codes(proposal.action, proposal.mapped_payload) if c not in known]
+    if missing and not proposal.needs_human:
+        proposal.needs_human = True
+        proposal.confidence = min(proposal.confidence, 0.4)
+        proposal.reasoning += (
+            f" [Canopy guard: account code(s) {sorted(set(missing))} in the mapped payload "
+            f"do not exist in {entity.name}'s chart — flagged for human review rather than "
+            f"a guaranteed write failure.]"
+        )
 
 
 def _build_user_message(change_type: str, source_payload: dict, entity: Entity, snapshot: dict) -> str:
@@ -126,4 +169,6 @@ async def map_change(
     system = f"{_BASE_SYSTEM}\n\n{_TYPE_GUIDANCE[change_type]}"
     user = _build_user_message(change_type, source_payload, entity, snapshot)
     raw = await complete(system, user, PROPOSAL_TOOL_SCHEMA)
-    return EngineProposal.model_validate(raw)
+    proposal = EngineProposal.model_validate(raw)
+    _guard_referenced_codes(proposal, entity, snapshot)
+    return proposal

@@ -10,11 +10,13 @@ class Settings(BaseSettings):
     xero_client_id: str = ""
     xero_client_secret: str = ""
     xero_redirect_uri: str = "http://localhost:8000/auth/xero/callback"
-    # Broad scopes remain valid until Sept 2027; override with granular scopes via .env
-    # once confirmed against developer.xero.com (March 2026 scope changes).
+    # Only request scopes the app has enabled in its Xero portal config, or the
+    # authorize call fails with `invalid_scope`. Phase 1 (item/account/contact/
+    # tracking) needs only settings + contacts. Add `accounting.transactions` here
+    # once it's enabled on the app (Phase 3: bills, manual journals, purchase orders).
     xero_scopes: str = (
         "offline_access openid profile email "
-        "accounting.settings accounting.contacts accounting.transactions"
+        "accounting.settings accounting.contacts"
     )
 
     # LLM = Azure AI Foundry via the OpenAI-compatible SDK (mapping/ingest/matching

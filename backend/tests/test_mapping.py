@@ -115,6 +115,66 @@ async def test_contact_dedup_links_to_existing_variant():
 
 
 @pytest.mark.asyncio
+async def test_guard_flags_payload_referencing_missing_account_code():
+    """The model reasons a remap (300 -> 310) but leaves 300 in the payload — the
+    deterministic guard must catch it and force needs_human so it can't be written."""
+
+    async def inconsistent(system, user, schema):
+        return {
+            "action": "create-item",
+            "mapped_payload": {
+                "Code": "SAFETY-NET",
+                "Name": "Safety Net",
+                "SalesDetails": {"AccountCode": "200", "TaxType": "OUTPUT2"},
+                "PurchaseDetails": {"AccountCode": "300", "TaxType": "INPUT2"},  # 300 not in snapshot
+            },
+            "confidence": 0.98,
+            "reasoning": "Mapped purchases to 310 Cost of Goods Sold.",  # says 310, payload says 300
+            "needs_human": False,
+        }
+
+    entity = _entity("Org D", "tenant-d")
+    snapshot = snap(
+        accounts=[
+            {"Code": "200", "Name": "Sales", "Type": "REVENUE", "Status": "ACTIVE"},
+            {"Code": "310", "Name": "Cost of Goods Sold", "Type": "DIRECTCOSTS", "Status": "ACTIVE"},
+        ]
+    )
+    prop = await map_change(inconsistent, "item", ITEM_SOURCE, entity, snapshot)
+    assert prop.needs_human is True
+    assert prop.confidence <= 0.4
+    assert "300" in prop.reasoning
+
+
+@pytest.mark.asyncio
+async def test_guard_passes_when_all_codes_exist():
+    async def consistent(system, user, schema):
+        return {
+            "action": "create-item",
+            "mapped_payload": {
+                "Code": "SAFETY-NET",
+                "Name": "Safety Net",
+                "SalesDetails": {"AccountCode": "200", "TaxType": "OUTPUT2"},
+                "PurchaseDetails": {"AccountCode": "310", "TaxType": "INPUT2"},
+            },
+            "confidence": 0.98,
+            "reasoning": "Both sides map to codes that exist here.",
+            "needs_human": False,
+        }
+
+    entity = _entity("Org E", "tenant-e")
+    snapshot = snap(
+        accounts=[
+            {"Code": "200", "Name": "Sales", "Type": "REVENUE", "Status": "ACTIVE"},
+            {"Code": "310", "Name": "Cost of Goods Sold", "Type": "DIRECTCOSTS", "Status": "ACTIVE"},
+        ]
+    )
+    prop = await map_change(consistent, "item", ITEM_SOURCE, entity, snapshot)
+    assert prop.needs_human is False
+    assert prop.confidence == 0.98
+
+
+@pytest.mark.asyncio
 async def test_malformed_llm_response_raises():
     async def bad(system, user, schema):
         return {  # confidence out of range → EngineProposal rejects it
