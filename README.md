@@ -48,10 +48,10 @@ These have each caught the model being confidently wrong in live runs against re
 
 ---
 
-## Status
+## Features
 
-**Phase 1 — multi-entity propagation** is complete and proven end-to-end against real Xero
-trial organisations (written, then read back to confirm), for all four change types:
+**Multi-entity propagation** — proven end-to-end against real Xero trial organisations
+(written, then read back to confirm), for all four change types:
 
 | Change type | Live-proven | Test |
 |---|:---:|:---:|
@@ -60,22 +60,21 @@ trial organisations (written, then read back to confirm), for all four change ty
 | Contact (dedup link-vs-create) | ✅ | ✅ |
 | Tracking category (+ options) | ✅ | ✅ |
 
-**Phase 2 — universal file ingest** is complete: upload *any* CSV/JSON/xlsx export
-(`POST /ingest`), the LLM infers what the file *is* — no per-source connector code — and
-normalises rows to per-entity manual-journal proposals in the same approval table. Unmappable
-columns are flagged `needs_human`; nothing is written. Demo payloads: a messy Sortly-style
-stock count and a Roller-style revenue export (`seed/fixtures/`).
+**Universal file ingest** — upload *any* CSV/JSON/xlsx export (`POST /ingest`), the LLM
+infers what the file *is* — no per-source connector code — and normalises rows to per-entity
+manual-journal proposals in the same approval table. Unmappable columns are flagged
+`needs_human`; nothing is written. Demo payloads: a messy Sortly-style stock count and a
+Roller-style revenue export (`seed/fixtures/`).
 
-**Phase 3 — PO-to-Bill** was scoped (drafts only, never auto-marking a PO as billed) and
-consciously cut to keep the two flagships demo-frozen.
+**Entity health with cross-org drift detection** — each org's header pill flags account
+codes that exist in most orgs in the group but are missing there, straight from the cached
+snapshots (`GET /entities` → `health.drift`).
 
-**Phase 4 — toolkit contribution + polish** is in progress: see
-[Toolkit contribution](#toolkit-contribution), `docs/architecture.md`, and `docs/pitch.md`.
-Entity health now includes **cross-org drift detection** — each org's header pill flags
-account codes that exist in most orgs in the group but are missing there, straight from the
-cached snapshots (`GET /entities` → `health.drift`).
+**An upstream fix to Xero's official MCP server** — see
+[Toolkit contribution](#toolkit-contribution).
 
-**41 backend tests pass** (credential-free — the LLM and Xero client are injected seams).
+**45 backend tests pass** (credential-free — the LLM and Xero client are injected seams).
+Deep-dives live in `docs/architecture.md` and `docs/pitch.md`.
 
 ---
 
@@ -171,7 +170,7 @@ Secrets are read from `backend/.env` at runtime and are never baked into an imag
 
 ### Tests
 ```bash
-cd backend && python -m pytest -q     # 28 passing, no credentials required
+cd backend && python -m pytest -q     # 45 passing, no credentials required
 ```
 
 ---
