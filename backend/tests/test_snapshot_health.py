@@ -39,12 +39,54 @@ def test_drift_flags_majority_codes_missing_here(db):
 
     # 200 exists in A and C (2 of 3) but not B → drift on B, nowhere else
     assert health[b.id]["drift"] == [
-        {"code": "200", "name": "Sales", "present_in": 2, "of": 3}
+        {
+            "code": "200",
+            "name": "Sales",
+            "present_in": 2,
+            "of": 3,
+            "source": {"Code": "200", "Name": "Sales"},
+        }
     ]
     assert health[a.id]["drift"] == []
     assert health[c.id]["drift"] == []
     # 201 exists only in B (1 of 3) — a minority code is nobody's drift
     assert all("201" not in [d["code"] for d in h["drift"]] for h in health.values())
+
+
+def test_drift_ignores_same_named_account_under_a_different_code(db):
+    # A + C code "Software Subscriptions" as 897; B carries the same account but
+    # numbered 8100. That's a coding-scheme difference, not a gap — B is not drift.
+    a = _entity(db, "tenant-a", "Org A")
+    b = _entity(db, "tenant-b", "Org B")
+    c = _entity(db, "tenant-c", "Org C")
+    _accounts(db, a, [{"Code": "897", "Name": "Software Subscriptions"}])
+    _accounts(db, b, [{"Code": "8100", "Name": "Software Subscriptions"}])
+    _accounts(db, c, [{"Code": "897", "Name": "Software Subscriptions"}])
+
+    health = snapshot_health(db, [a, b, c])
+    assert health[b.id]["drift"] == []
+    assert health[b.id]["drift_total"] == 0
+
+
+def test_drift_flags_genuinely_absent_code(db):
+    # Same majority setup, but B has no account of that name at all → real drift.
+    a = _entity(db, "tenant-a", "Org A")
+    b = _entity(db, "tenant-b", "Org B")
+    c = _entity(db, "tenant-c", "Org C")
+    _accounts(db, a, [{"Code": "815", "Name": "Employee contributions", "Type": "CURRLIAB"}])
+    _accounts(db, b, [{"Code": "400", "Name": "Rent"}])
+    _accounts(db, c, [{"Code": "815", "Name": "Employee contributions", "Type": "CURRLIAB"}])
+
+    health = snapshot_health(db, [a, b, c])
+    assert health[b.id]["drift"] == [
+        {
+            "code": "815",
+            "name": "Employee contributions",
+            "present_in": 2,
+            "of": 3,
+            "source": {"Code": "815", "Name": "Employee contributions", "Type": "CURRLIAB"},
+        }
+    ]
 
 
 def test_drift_ignores_archived_codes_and_needs_two_orgs(db):

@@ -81,8 +81,13 @@ def snapshot_health(db: Session, entities: list[Entity]) -> dict[int, dict]:
 
     Reads only cached Snapshot rows (no Xero calls): for each entity, which
     kinds are cached and how fresh; plus which active account codes exist in a
-    majority of snapshot-bearing orgs but are missing here — the "org B has no
-    200" signal, surfaced without anyone running a propagation first.
+    majority of snapshot-bearing orgs but are genuinely absent here — the "org B
+    has no 200" signal, surfaced without anyone running a propagation first.
+
+    Drift is code AND name aware: a code is not counted as missing if this org
+    already carries an account of the same name under a different code (a coding-
+    scheme difference, not a real gap). That keeps the signal honest and avoids
+    pushing a propagation that would fail Xero's unique account-name constraint.
     """
     ids = [e.id for e in entities]
     rows = db.query(Snapshot).filter(Snapshot.entity_id.in_(ids)).all() if ids else []
@@ -91,14 +96,24 @@ def snapshot_health(db: Session, entities: list[Entity]) -> dict[int, dict]:
         by_entity.setdefault(row.entity_id, {})[row.kind] = row
 
     codes: dict[int, dict[str, str]] = {}
+    names_here: dict[int, set[str]] = {}  # per-entity set of active account names (lc)
+    sources: dict[str, dict] = {}  # code -> a create-account payload from an org that has it
     for eid, kinds in by_entity.items():
         acc = kinds.get("accounts")
         if acc is not None:
-            codes[eid] = {
-                r["Code"]: r.get("Name", "")
-                for r in acc.data
+            active = [
+                r for r in acc.data
                 if r.get("Code") and r.get("Status", "ACTIVE") == "ACTIVE"
-            }
+            ]
+            codes[eid] = {r["Code"]: r.get("Name", "") for r in active}
+            names_here[eid] = {(r.get("Name") or "").strip().lower() for r in active}
+            for r in active:
+                # First org that carries a code donates its definition so the UI
+                # can pre-fill a complete, valid create-account propagation.
+                sources.setdefault(
+                    r["Code"],
+                    {k: r[k] for k in ("Code", "Name", "Type", "TaxType", "Description") if r.get(k)},
+                )
 
     total = len(codes)
     presence: dict[str, set[int]] = {}
@@ -113,15 +128,23 @@ def snapshot_health(db: Session, entities: list[Entity]) -> dict[int, dict]:
         kinds = by_entity.get(e.id, {})
         drift = []
         if e.id in codes and total >= 2:
+            # A code is only "missing" here if this org has NEITHER that code NOR
+            # an account of the same name under a different code — otherwise it's a
+            # coding-scheme difference (same account, different number), not a gap,
+            # and force-propagating the code would collide on Xero's unique-name rule.
+            here_names = names_here.get(e.id, set())
             drift = [
                 {
                     "code": code,
                     "name": names[code],
                     "present_in": len(present),
                     "of": total,
+                    "source": sources.get(code),
                 }
                 for code, present in presence.items()
-                if e.id not in present and len(present) > total / 2
+                if e.id not in present
+                and len(present) > total / 2
+                and names[code].strip().lower() not in here_names
             ]
             drift.sort(key=lambda d: (-d["present_in"], d["code"]))
         health[e.id] = {

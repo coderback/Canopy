@@ -1,7 +1,7 @@
 import pytest
 
 from app.execution import execute_run
-from app.models import Proposal, Run
+from app.models import Proposal, Run, Snapshot
 from app.xero.client import XeroApi
 
 
@@ -75,6 +75,41 @@ async def test_invalid_payload_never_reaches_xero(db, token, entity, fake_transp
     assert fake_transport.requests == []  # zero API calls
     db.refresh(run)
     assert run.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_successful_write_refreshes_entity_snapshot(db, token, entity, fake_transport):
+    # Resolving a drift must move the health bar immediately: after the write,
+    # execute_run force-re-reads the entity's accounts so the new code is cached.
+    acct = {"AccountID": "a-1", "Code": "990", "Name": "Gift Card Liability", "Type": "CURRLIAB", "Status": "ACTIVE"}
+    fake_transport.on("PUT", "/Accounts", {"Accounts": [acct]})
+    fake_transport.on("GET", "/Accounts", {"Accounts": [acct]})
+
+    run = Run(kind="propagation", change_type="account", source_payload={})
+    db.add(run)
+    db.flush()
+    db.add(
+        Proposal(
+            run_id=run.id,
+            entity_id=entity.id,
+            action="create-account",
+            mapped_payload={"Code": "990", "Name": "Gift Card Liability", "Type": "CURRLIAB"},
+            confidence=0.9,
+            reasoning="test",
+            status="approved",
+        )
+    )
+    db.commit()
+
+    await execute_run(db, XeroApi(transport=fake_transport), run)
+
+    db.refresh(run)
+    assert run.status == "completed"
+    # the write (PUT) was followed by a forced re-read (GET /Accounts)
+    assert any(r.method == "GET" and r.url.path.endswith("/Accounts") for r in fake_transport.requests)
+    # and the fresh snapshot now carries the just-created account
+    snap = db.query(Snapshot).filter_by(entity_id=entity.id, kind="accounts").first()
+    assert snap is not None and any(a["Code"] == "990" for a in snap.data)
 
 
 @pytest.mark.asyncio

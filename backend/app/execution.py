@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from .engines.contracts import validate_payload
 from .models import Proposal, Run, WriteResult, utcnow
+from .snapshots import get_snapshot
 from .xero.client import XeroApi, XeroApiError
 
 _ID_FIELDS = {
@@ -19,6 +20,16 @@ _ID_FIELDS = {
     "create-tracking-category": "TrackingCategoryID",
     "create-manual-journal": "ManualJournalID",
     "create-bill": "InvoiceID",
+}
+
+# A successful write of one of these actions changes the entity's reference data;
+# the matching snapshot kind must be refreshed so health/drift and the next
+# mapping reflect it (manual journals / bills aren't snapshotted → not here).
+_ACTION_SNAPSHOT_KIND = {
+    "create-contact": "contacts",
+    "create-item": "items",
+    "create-account": "accounts",
+    "create-tracking-category": "tracking_categories",
 }
 
 
@@ -114,4 +125,24 @@ async def execute_run(db: Session, api: XeroApi, run: Run) -> Run:
         run.status = "failed"
     run.completed_at = utcnow()
     db.commit()
+    await _refresh_written_snapshots(db, api, run)
     return run
+
+
+async def _refresh_written_snapshots(db: Session, api: XeroApi, run: Run) -> None:
+    """Force-refresh the reference-data snapshot for every entity that had a
+    successful write, so the health bar / drift and the next mapping see the new
+    record immediately (a resolved account drift turns its dot green right away
+    instead of staying red until the TTL lapses)."""
+    done: set[tuple[int, str]] = set()
+    for proposal in run.proposals:
+        if proposal.status != "executed":
+            continue
+        kind = _ACTION_SNAPSHOT_KIND.get(proposal.action)
+        if kind is None or (proposal.entity_id, kind) in done:
+            continue
+        done.add((proposal.entity_id, kind))
+        try:
+            await get_snapshot(db, api, proposal.entity, kind, force=True)
+        except Exception:  # noqa: BLE001 — a stale cache must never fail a done write
+            pass
