@@ -1,8 +1,9 @@
 """Change fan-out router (Bounty 01 propagation core).
 
 POST /changes takes one source change and a list of target entities, snapshots
-each entity's live reference data, runs the mapping engine per entity, and
-persists the resulting proposals into a new Run. Nothing is written to Xero
+each entity's live reference data, runs the mapping engine per entity
+(concurrently, see fanout.py), and persists the resulting proposals into a new
+Run. An entity whose mapping fails gets a needs_human row; the rest are kept. Nothing is written to Xero
 here — the proposals wait in the batched approval table (POST /runs/{id}/approve).
 
 The mapping-engine call and the Xero client are provided via dependencies so
@@ -16,7 +17,8 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..engines import llm
 from ..engines.contracts import ChangeType
-from ..engines.mapping import Complete, map_change
+from ..engines.mapping import _ACTION_BY_TYPE, Complete, map_change
+from ..fanout import fan_out
 from ..models import Entity, Proposal, Run
 from ..serializers import run_dict
 from ..snapshots import get_entity_context
@@ -56,6 +58,12 @@ async def create_change(
     missing = [eid for eid in body.target_entity_ids if eid not in found]
     if missing:
         raise HTTPException(status_code=400, detail=f"unknown/inactive entities: {missing}")
+    action = _ACTION_BY_TYPE.get(body.change_type)
+    if action is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"change_type {body.change_type!r} is not propagated via /changes",
+        )
 
     run = Run(
         kind="propagation",
@@ -66,9 +74,13 @@ async def create_change(
     db.add(run)
     db.flush()  # assign run.id before attaching proposals
 
-    for entity in entities:
+    async def propose(entity: Entity):
         snapshot = await get_entity_context(db, api, entity)
-        proposal = await map_change(complete, body.change_type, body.payload, entity, snapshot)
+        return await map_change(complete, body.change_type, body.payload, entity, snapshot)
+
+    proposals = await fan_out(entities, propose, action)
+    for entity in entities:
+        proposal = proposals[entity.id]
         db.add(
             Proposal(
                 run_id=run.id,

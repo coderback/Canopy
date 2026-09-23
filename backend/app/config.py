@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./canopy.sqlite3"
 
     snapshot_ttl_seconds: int = 300
+    # Max entities snapshotted + mapped at once during a fan-out (bounds LLM load;
+    # Xero limits are per tenant so they don't constrain cross-entity parallelism).
+    fanout_concurrency: int = 8
     frontend_origin: str = "http://localhost:3000"
 
     # Dev-only: exposes POST /demo/seed and lets approval simulate Xero writes

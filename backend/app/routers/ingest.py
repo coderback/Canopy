@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..engines.ingest import classify_ingest, map_ingest_to_journal
 from ..engines.mapping import Complete
+from ..fanout import fan_out
 from ..ingest_parse import UnsupportedFileError, parse_upload
 from ..models import Entity, Proposal, Run
 from ..serializers import run_dict
@@ -90,9 +91,23 @@ async def ingest_file(
     db.add(run)
     db.flush()
 
+    intents_by_entity = {
+        entity.id: [i for i in classification.intents if match_site_to_entity(i.site, [entity])]
+        for entity in entities
+    }
+
+    async def propose(entity: Entity):
+        snapshot = await get_entity_context(db, api, entity)
+        return await map_ingest_to_journal(
+            complete, classification, intents_by_entity[entity.id], entity, snapshot
+        )
+
+    proposals = await fan_out(
+        [e for e in entities if intents_by_entity[e.id]], propose, "create-manual-journal"
+    )
+
     for entity in entities:
-        intents = [i for i in classification.intents if match_site_to_entity(i.site, [entity])]
-        if not intents:
+        if not intents_by_entity[entity.id]:
             db.add(
                 Proposal(
                     run_id=run.id,
@@ -109,8 +124,7 @@ async def ingest_file(
                 )
             )
             continue
-        snapshot = await get_entity_context(db, api, entity)
-        proposal = await map_ingest_to_journal(complete, classification, intents, entity, snapshot)
+        proposal = proposals[entity.id]
         db.add(
             Proposal(
                 run_id=run.id,

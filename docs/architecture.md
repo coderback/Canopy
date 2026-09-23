@@ -68,7 +68,10 @@ MCP server hardcodes the first tenant, which we patched with a `XERO_TENANT_ID` 
 ## Failure paths (tested)
 
 - Unmappable file or column → graceful refusal (`needs_human`), zero writes.
-- Network death mid-fan-out → partial results recorded per row, retriable.
+- Network death mid-fan-out → partial results recorded per row, retriable (a half-written
+  tracking category is completed on retry, not re-created).
+- LLM/snapshot failure for one entity during mapping → that entity gets a zero-confidence
+  `needs_human` row; every other entity's proposal is kept.
 - LLM proposes a nonexistent account code → deterministic guard forces `needs_human`
   before the API is ever called.
 - 429 from Xero → per-tenant backoff and retry.

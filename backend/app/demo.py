@@ -43,6 +43,9 @@ class DemoXeroApi(XeroApi):
     async def create_account(self, db, tenant_id, account):
         return self._ok(account, "AccountID")
 
+    async def list_tracking_categories(self, db, tenant_id):
+        return []
+
     async def create_tracking_category(self, db, tenant_id, category):
         return self._ok(category, "TrackingCategoryID")
 

@@ -30,18 +30,40 @@ async def _write(api: XeroApi, db: Session, tenant_id: str, action: str, payload
     if action == "create-account":
         return await api.create_account(db, tenant_id, payload)
     if action == "create-tracking-category":
-        options = payload.pop("Options", [])
-        category = await api.create_tracking_category(db, tenant_id, payload)
-        for name in options:
-            await api.add_tracking_option(
-                db, tenant_id, category["TrackingCategoryID"], {"Name": name}
-            )
-        return category
+        return await _write_tracking_category(api, db, tenant_id, payload)
     if action == "create-manual-journal":
         return await api.create_manual_journal(db, tenant_id, payload)
     if action == "create-bill":
         return await api.create_draft_bill(db, tenant_id, payload)
     raise ValueError(f"unknown action {action!r}")
+
+
+async def _write_tracking_category(api: XeroApi, db: Session, tenant_id: str, payload: dict) -> dict:
+    """Category + options is several Xero calls, so a failure can leave the category
+    created with only some options. Look the category up by name first and add only
+    the missing options, so a retry completes the write instead of 400ing on a
+    duplicate category name."""
+    options = payload.pop("Options", [])
+    name = str(payload.get("Name", "")).strip().lower()
+    existing = next(
+        (
+            c for c in await api.list_tracking_categories(db, tenant_id)
+            if str(c.get("Name", "")).strip().lower() == name
+        ),
+        None,
+    )
+    if existing is None:
+        category = await api.create_tracking_category(db, tenant_id, payload)
+        have: set[str] = set()
+    else:
+        category = existing
+        have = {str(o.get("Name", "")).strip().lower() for o in existing.get("Options") or []}
+    for option in options:
+        if option.strip().lower() not in have:
+            await api.add_tracking_option(
+                db, tenant_id, category["TrackingCategoryID"], {"Name": option}
+            )
+    return category
 
 
 async def execute_proposal(db: Session, api: XeroApi, proposal: Proposal) -> WriteResult:

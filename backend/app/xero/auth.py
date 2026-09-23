@@ -5,6 +5,7 @@ automatically. Tenant IDs come from GET /connections and are upserted into
 the entity registry — every API call downstream passes an explicit tenant id.
 """
 
+import asyncio
 import base64
 import json
 import secrets
@@ -23,6 +24,7 @@ TOKEN_URL = "https://identity.xero.com/connect/token"
 CONNECTIONS_URL = "https://api.xero.com/connections"
 
 _pending_states: set[str] = set()
+_refresh_lock = asyncio.Lock()
 
 
 def _fernet() -> Fernet:
@@ -113,14 +115,24 @@ async def refresh_token(db: Session, token: dict) -> dict:
     return new_token
 
 
+def _expiring(token: dict) -> bool:
+    obtained = token.get("obtained_at", 0)
+    expires_in = token.get("expires_in", 1800)
+    return time.time() > obtained + expires_in - 60  # refresh 60s early
+
+
 async def get_valid_access_token(db: Session) -> str:
     token = load_token(db)
     if token is None:
         raise RuntimeError("No Xero token stored — connect an organisation first via /auth/xero/connect")
-    obtained = token.get("obtained_at", 0)
-    expires_in = token.get("expires_in", 1800)
-    if time.time() > obtained + expires_in - 60:  # refresh 60s early
-        token = await refresh_token(db, token)
+    if _expiring(token):
+        # The fan-out calls Xero for several tenants concurrently. Xero rotates the
+        # refresh token on every refresh, so only one coroutine may refresh; the
+        # rest wait, then re-read the token it saved instead of spending a stale one.
+        async with _refresh_lock:
+            token = load_token(db) or token
+            if _expiring(token):
+                token = await refresh_token(db, token)
     return token["access_token"]
 
 

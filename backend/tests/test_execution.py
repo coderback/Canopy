@@ -75,3 +75,42 @@ async def test_invalid_payload_never_reaches_xero(db, token, entity, fake_transp
     assert fake_transport.requests == []  # zero API calls
     db.refresh(run)
     assert run.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_tracking_category_retry_completes_partial_write(db, token, entity, fake_transport):
+    # A previous attempt created the category and its first option, then died.
+    # The retry must reuse it and add only the missing option — not re-PUT the
+    # category (Xero 400s a duplicate name) nor duplicate "North".
+    existing = {
+        "TrackingCategoryID": "tc-1",
+        "Name": "Region",
+        "Options": [{"TrackingOptionID": "o-1", "Name": "North"}],
+    }
+    fake_transport.on("GET", "/TrackingCategories", {"TrackingCategories": [existing]})
+    fake_transport.on("PUT", "/Options", {"Options": [{"TrackingOptionID": "o-2", "Name": "South"}]})
+
+    run = Run(kind="propagation", change_type="tracking", source_payload={})
+    db.add(run)
+    db.flush()
+    db.add(
+        Proposal(
+            run_id=run.id,
+            entity_id=entity.id,
+            action="create-tracking-category",
+            mapped_payload={"Name": "Region", "Options": ["North", "South"]},
+            confidence=0.9,
+            reasoning="test",
+            status="approved",
+        )
+    )
+    db.commit()
+
+    await execute_run(db, XeroApi(transport=fake_transport), run)
+
+    db.refresh(run)
+    assert run.status == "completed"
+    puts = [r for r in fake_transport.requests if r.method == "PUT"]
+    assert [r.url.path for r in puts] == ["/api.xro/2.0/TrackingCategories/tc-1/Options"]
+    assert b"South" in puts[0].content
+    assert run.proposals[0].write_results[0].xero_id == "tc-1"

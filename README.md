@@ -73,7 +73,7 @@ snapshots (`GET /entities` → `health.drift`).
 **An upstream fix to Xero's official MCP server** — see
 [Toolkit contribution](#toolkit-contribution).
 
-**45 backend tests pass** (credential-free — the LLM and Xero client are injected seams).
+**50 backend tests pass** (credential-free — the LLM and Xero client are injected seams).
 Deep-dives live in `docs/architecture.md` and `docs/pitch.md`.
 
 ---
@@ -170,7 +170,7 @@ Secrets are read from `backend/.env` at runtime and are never baked into an imag
 
 ### Tests
 ```bash
-cd backend && python -m pytest -q     # 45 passing, no credentials required
+cd backend && python -m pytest -q     # 50 passing, no credentials required
 ```
 
 ---
