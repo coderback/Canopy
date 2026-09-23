@@ -80,7 +80,7 @@ export default function Home() {
           <section>
             <Card>
               {activeRun ? (
-                <ApprovalTable run={activeRun} onRunUpdate={onRun} />
+                <ApprovalTable key={activeRun.id} run={activeRun} onRunUpdate={onRun} />
               ) : (
                 <EmptyReview />
               )}

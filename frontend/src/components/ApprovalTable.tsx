@@ -179,10 +179,15 @@ export default function ApprovalTable({
   const canApprove = ["proposed", "partial", "failed"].includes(run.status);
   const locked = !canApprove;
 
+  // Never JSON.parse(undefined): fall back to the proposal's own payload if this
+  // row has no edit entry yet (e.g. a run swapped in before state settled).
+  const editText = (p: Proposal) =>
+    edits[p.id] ?? JSON.stringify(p.edited_payload ?? p.mapped_payload, null, 2);
+
   const undecided = proposals.filter((p) => p.needs_human && decisions[p.id] === undefined);
   const anyJsonBroken = proposals.some((p) => {
     try {
-      JSON.parse(edits[p.id]);
+      JSON.parse(editText(p));
       return false;
     } catch {
       return true;
@@ -199,7 +204,7 @@ export default function ApprovalTable({
     try {
       const payloadDecisions: RowDecision[] = proposals.map((p) => {
         const approved = decisions[p.id] === "include";
-        const editedObj = JSON.parse(edits[p.id]);
+        const editedObj = JSON.parse(editText(p));
         const changed = JSON.stringify(editedObj) !== JSON.stringify(p.mapped_payload);
         return {
           proposal_id: p.id,
@@ -224,7 +229,7 @@ export default function ApprovalTable({
         locked={locked}
         decision={decisions[p.id]}
         onDecision={(d) => setDecisions((s) => ({ ...s, [p.id]: d }))}
-        edited={edits[p.id]}
+        edited={editText(p)}
         onEdit={(text) => setEdits((s) => ({ ...s, [p.id]: text }))}
       />
     ));
