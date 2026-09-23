@@ -2,7 +2,7 @@
 
 ## Context
 
-Xero "Rise of the Builder" hackathon build (4–5 Jul 2026), grounded in 8 AirHop stakeholder interviews plus a technical onboarding with Charles Win (BI Lead). The repo (`master` branch) is greenfield: only `Canopy-multi-entity-command-centre-build-spec.md`, `Interview Synthesis — Pain Points, Ideas & Key insights.md`, and a `.gitignore`. Everything below is net-new code.
+Xero "Rise of the Builder" hackathon build (4–5 Jul 2026), grounded in 8 AirHop stakeholder interviews plus a technical onboarding with their BI lead. The repo (`master` branch) is greenfield: only `Canopy-multi-entity-command-centre-build-spec.md`, `Interview Synthesis — Pain Points, Ideas & Key insights.md`, and a `.gitignore`. Everything below is net-new code.
 
 Targets: **Bounty 01** (Productivity Powerhouse) via multi-entity propagation; **Bounty 02** (Vibe Integrator, $3,000) via the universal ingest adapter. Judging: 50% real problem + Xero use · 30% API integration · 20% production-ready architecture.
 
@@ -12,7 +12,7 @@ Targets: **Bounty 01** (Productivity Powerhouse) via multi-entity propagation; *
 3. PO-to-Bill creates bills as **DRAFT** only and **never** marks the PO as BILLED (the interviewees' #1 AP pain is Xero's native copy-to-bill doing exactly that, breaking ApprovalMax).
 4. Name: Canopy.
 
-**Verified Xero facts to build against:** account creation needs raw `PUT Accounts` (no MCP tool; required fields Code/Name/Type) — account-code propagation is CORE (Claire Hiscock's literal #1 ask). Bills = `create-invoice` type ACCPAY. POs via raw `PurchaseOrders` endpoint. Rate limits 60/min + 5,000/day **per tenant** (fan-out parallelises safely; per-tenant limiter still required). Uncertified apps: 25 tenants max, max 2 uncertified-app connections per org. Use **granular scopes** (broad scopes deprecated Mar 2026) — confirm exact names on developer.xero.com during build. LLM: **Azure AI Foundry via the OpenAI-compatible SDK** (`openai` package; `AzureOpenAI`, or `OpenAI(base_url=...)` for a serverless/OpenAI-compatible endpoint), structured outputs via forced tool calling; the LLM only proposes, deterministic validated code writes.
+**Verified Xero facts to build against:** account creation needs raw `PUT Accounts` (no MCP tool; required fields Code/Name/Type) — account-code propagation is CORE (Claire's literal #1 ask). Bills = `create-invoice` type ACCPAY. POs via raw `PurchaseOrders` endpoint. Rate limits 60/min + 5,000/day **per tenant** (fan-out parallelises safely; per-tenant limiter still required). Uncertified apps: 25 tenants max, max 2 uncertified-app connections per org. Use **granular scopes** (broad scopes deprecated Mar 2026) — confirm exact names on developer.xero.com during build. LLM: **Azure AI Foundry via the OpenAI-compatible SDK** (`openai` package; `AzureOpenAI`, or `OpenAI(base_url=...)` for a serverless/OpenAI-compatible endpoint), structured outputs via forced tool calling; the LLM only proposes, deterministic validated code writes.
 
 ## What the user must do by hand (blockers for live runs, not for coding)
 
@@ -88,7 +88,7 @@ Key rule stated everywhere (code, README, pitch): **Claude proposes structured J
 
 **Phase 4 — Toolkit PR + polish.** Fork `xero-mcp-server`, ~5-line `XERO_TENANT_ID` env override in `xero-client.ts`, upstream PR (pitch: "we found and fixed the official MCP server's multi-tenant limitation"). Entity-health touches, README + architecture diagram, backup demo video, 3-min script per spec §9 updated (account-code now core; ingest beat for Bounty 02; PO as encore).
 
-**Pitch ammunition from the synthesis (use full names):** Claire Hiscock's 20-entity expense-code quote; Tim Mclure's approval-fatigue warning → batched approval; Anita Chakraborty's *"'It's the computer what did it' isn't a defence"* → per-row reasoning + audit trail; Tamika/Anna/Emily on the copy-to-bill/ApprovalMax breakage → DRAFT-only design; Charles's portal (shared cache, DynamoDB run history) → snapshot cache + run history as "productionising the internal proof-of-concept." Say **"eight interviews plus a technical deep-dive with their BI lead"** — not nine.
+**Pitch ammunition from the synthesis (first names only, for privacy):** Claire's 20-entity expense-code quote; Tim's approval-fatigue warning → batched approval; Anita's *"'It's the computer what did it' isn't a defence"* → per-row reasoning + audit trail; Tamika/Anna/Emily on the copy-to-bill/ApprovalMax breakage → DRAFT-only design; the BI lead's portal (shared cache, DynamoDB run history) → snapshot cache + run history as "productionising the internal proof-of-concept." Say **"eight interviews plus a technical deep-dive with their BI lead"** — not nine.
 
 ## Verification
 

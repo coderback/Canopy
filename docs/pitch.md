@@ -6,7 +6,7 @@
 
 ## 0:00–0:25 — The problem, with authority
 
-"AirHop runs **20-plus entities in Xero**. We did **eight interviews with their finance team, plus a technical deep-dive with their BI lead**. The #1 structural pain, in their Senior Management Accountant Claire Hiscock's own words: *'If we wanted to set up a new expense code, you've just got to do that in every single entity — so for us that's like 20-odd entities.'* Every change — a contact, an item, an account code — re-keyed org by org, one browser window at a time. Canopy is the command centre that fixes that."
+"AirHop runs **20-plus entities in Xero**. We did **eight interviews with their finance team, plus a technical deep-dive with their BI lead**. The #1 structural pain, in their Senior Management Accountant Claire's own words: *'If we wanted to set up a new expense code, you've just got to do that in every single entity — so for us that's like 20-odd entities.'* Every change — a contact, an item, an account code — re-keyed org by org, one browser window at a time. Canopy is the command centre that fixes that."
 
 ## 0:25–0:50 — Warm-up (it works across orgs)
 
@@ -20,7 +20,7 @@
 
 "Here's the part a rigid integration can't do. Org A maps cleanly — high confidence. Org B's chart of accounts is different: there is no account `200`, so Claude maps **`200 Sales` → `201 Trading Income`** and shows its reasoning. Org C has no plausible income account at all — so it **refuses to guess** and flags the row for a human.
 
-That refusal is deliberate. AirHop's Management Accountant Anita Chakraborty told us: *'"It's the computer what did it" isn't a defence.'* So every row shows its reasoning and its confidence, and the AI never writes anything — it only proposes. Deterministic, schema-validated code does the writing, only after a human approves.
+That refusal is deliberate. AirHop's Management Accountant Anita told us: *'"It's the computer what did it" isn't a defence.'* So every row shows its reasoning and its confidence, and the AI never writes anything — it only proposes. Deterministic, schema-validated code does the writing, only after a human approves.
 
 And the expense-code ask itself? *Live: propagate a new expense code.* There's no MCP tool and no SDK sugar for creating accounts — we go straight to the raw Accounting API, `PUT /Accounts`, per tenant. Claire's literal #1 request, first-class."
 
@@ -36,7 +36,7 @@ Canopy has **no Sortly connector and no Roller connector**. You drop in *any* ex
 
 *Live: glance at the flagged row, fix inline, hit Approve & propagate; per-entity results fill in; open run history.*
 
-"One button, batched — because their Finance Director Tim Mclure warned us about approval fatigue: approve, approve, approve until you stop reading. High-confidence rows come pre-checked; flagged rows block until a human has actually looked. And every run is written to history with the full request and response — the audit trail their BI lead built himself internally, productionised."
+"One button, batched — because their Finance Director Tim warned us about approval fatigue: approve, approve, approve until you stop reading. High-confidence rows come pre-checked; flagged rows block until a human has actually looked. And every run is written to history with the full request and response — the audit trail their BI lead built himself internally, productionised."
 
 ## 2:45–3:00 — The frame (close)
 
@@ -50,7 +50,7 @@ Canopy has **no Sortly connector and no Roller connector**. You drop in *any* ex
 - **"What stops the AI writing something wrong?"** It can't write at all. Claude emits structured JSON proposals (forced tool calling); a Pydantic-validated deterministic layer executes only approved rows. Failure paths: unmappable file → refusal, zero writes; network death mid-fan-out → partial results recorded and retriable.
 - **"Rate limits?"** 60/min and 5,000/day **per tenant**, so fan-out across tenants parallelises safely; Canopy still runs a per-tenant limiter with 429 retry/backoff.
 - **"Why is PO-to-Bill not in the demo?"** Scoped and consciously cut to keep the two flagships demo-frozen. The design is on record: bills created as DRAFT only, PO status never touched — because Xero's native copy-to-bill auto-marking POs as BILLED is the AP team's #1 pain (Tamika: *"we can't find that purchase order. We've then got to go find the purchase order separately, unbill it, match it..."*).
-- **"Is this what users asked for?"** Tim Mclure, verbatim: *"The invoice comes in. The system reads it and says: here's the invoice, this is what I think we should do. Is that right? The human approves it. That's what we want."*
+- **"Is this what users asked for?"** Tim, verbatim: *"The invoice comes in. The system reads it and says: here's the invoice, this is what I think we should do. Is that right? The human approves it. That's what we want."*
 
 - **"Isn't this one person's wish-list?"** No. Multi-entity re-keying came up independently in four interviews (Claire, Emily, Tim, Anita). Asked whether a tool should act on its own or have them approve first, all eight chose a human approving before anything is final. Three (Callum, Emily, Anita) described Xero's own automatic matching being confidently wrong.
 
