@@ -12,6 +12,28 @@ does it in one reviewed batch.
 
 ---
 
+## What the finance team told us
+
+Eight interviews across accounts payable, management accounting, revenue and the Finance
+Director, on one day, each recorded and synthesised. The pain points Canopy is built around:
+
+| What we heard | What Canopy does about it |
+|---|---|
+| **Xero is one entity at a time.** With 20+ entities, a new expense code, contact or product is re-keyed in every org; working in two orgs at once means two different browsers. *"If we wanted to set up a new expense code, you've just got to do that in every single entity — so for us that's like 20 odd entities."* — Senior Management Accountant | One change, fanned out to every selected org and mapped to each org's own chart, tax rates and contacts. |
+| **The only cross-entity fix is one person's side project.** An internal portal syncs product catalogues across orgs, but nothing else, and nobody else can maintain it. *"Unless we had [the BI lead's] knowledge and expertise, we would literally be doing that once for every entity."* — Finance Director | The same fan-out for items, accounts, contacts and tracking categories, with the run history kept inside Canopy rather than in one person's head. |
+| **Automation that's confidently wrong is worse than none.** Xero's reconciliation suggestions matched a payment to a years-old invoice with the same amount; staff click through suggestions that look right on the surface. *"There's so many different points where just like someone doing something slightly wrong or just overlooking something can lead to confusion."* — Finance Assistant | Every proposal shows its reasoning and a confidence score. If nothing in the target org fits, the AI refuses rather than guesses, and deterministic guards re-check what it proposed. |
+| **Human-in-the-loop, but without approval fatigue.** Every interviewee independently wanted a human to approve before anything is final; the Finance Director warned against approve, approve, approve until nobody reads. *"The system reads it and says: here's the invoice, this is what I think we should do. Is that right? The human approves it. That's what we want."* — Finance Director | One batched approval for the whole fan-out. High-confidence rows come pre-checked; flagged rows block until someone decides them. |
+| **The audit trail is too vague.** Xero logs "bill was amended" without saying what changed or what it was before. | Every write stores the exact request and Xero's response, per org, per attempt. |
+| **Stock and revenue exports are re-keyed by hand.** Stock counts go Sortly → Excel → journal import; POS revenue is exported and reconciled against Xero daily. Neither system is integrated. | Upload any CSV/JSON/xlsx export: the AI works out what the file is and proposes a balanced draft journal per site's org, in the same approval table. |
+| **Rules get bent for good reasons.** *"We break the rules — not accounting rules, just workflow rules. That's inherent to an agile, fast-moving business."* — Finance Director | Every row can be edited or excluded before approval; Canopy proposes, it doesn't enforce. |
+
+**Heard, but out of scope for this build:** the AP team's biggest single frustration, where
+copying a purchase order to a bill auto-marks the PO as billed and breaks the ApprovalMax
+round-trip, plus manual remittance sending, no invoice on-hold status, and no per-person
+workload report.
+
+---
+
 ## The core idea
 
 ```
