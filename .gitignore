@@ -8,3 +8,5 @@ node_modules/
 /Interview Synthesis — Pain Points, Ideas & Key insights.md
 /CANOPY-IMPLEMENTATION-PLAN.md
 /CANOPY-BUILD-PLAN-OG.md
+/docs/market-research.md
+*.sqlite3.bak*
