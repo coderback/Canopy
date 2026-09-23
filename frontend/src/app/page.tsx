@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getEntities, getRun, getRuns, type Entity, type Run } from "@/lib/api";
+import {
+  getEntities,
+  getRun,
+  getRuns,
+  type DriftEntry,
+  type DriftPrefill,
+  type Entity,
+  type Run,
+} from "@/lib/api";
 import { Card } from "@/components/ui";
 import ApprovalTable from "@/components/ApprovalTable";
 import ComposePanel from "@/components/ComposePanel";
@@ -13,6 +21,7 @@ export default function Home() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [activeRun, setActiveRun] = useState<Run | null>(null);
   const [connError, setConnError] = useState<string | null>(null);
+  const [prefill, setPrefill] = useState<DriftPrefill | null>(null);
 
   const refreshLists = useCallback(async () => {
     try {
@@ -45,6 +54,13 @@ export default function Home() {
     }
   }, []);
 
+  // Clicking a red org in the health bar pre-fills the compose form with a
+  // ready-to-review create-account propagation for the drifted code.
+  const onResolveDrift = useCallback((entity: Entity, drift: DriftEntry) => {
+    const payload = drift.source ?? { Code: drift.code, Name: drift.name, Type: "EXPENSE" };
+    setPrefill({ changeType: "account", payload, targetId: entity.id, nonce: Date.now() });
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 border-b border-border bg-surface/85 backdrop-blur">
@@ -55,7 +71,7 @@ export default function Home() {
             <span className="hidden text-sm text-muted sm:inline">Multi-Entity Command Centre</span>
           </div>
           <div className="ml-auto">
-            <EntityHealthBar entities={entities} />
+            <EntityHealthBar entities={entities} onResolve={onResolveDrift} />
           </div>
         </div>
       </header>
@@ -70,7 +86,7 @@ export default function Home() {
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
           <aside className="space-y-4 lg:sticky lg:top-[76px]">
             <Card>
-              <ComposePanel entities={entities} onRun={onRun} />
+              <ComposePanel entities={entities} onRun={onRun} prefill={prefill} />
             </Card>
             <Card>
               <RunHistory runs={runs} activeId={activeRun?.id ?? null} onSelect={onSelectRun} />

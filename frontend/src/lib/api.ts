@@ -58,12 +58,30 @@ export type Run = {
   proposals?: Proposal[];
 };
 
+export type DriftEntry = {
+  code: string;
+  name: string;
+  present_in: number;
+  of: number;
+  /** A create-account payload donated by a sibling org that has this code —
+   * lets the UI pre-fill a complete propagation to resolve the drift. */
+  source?: Record<string, unknown> | null;
+};
+
 export type EntityHealth = {
   snapshots: Record<string, { count: number; fetched_at: string }>;
   kinds_cached: number;
   kinds_total: number;
-  drift: { code: string; name: string; present_in: number; of: number }[];
+  drift: DriftEntry[];
   drift_total: number;
+};
+
+/** A drift resolution the health bar hands to the compose form to pre-fill. */
+export type DriftPrefill = {
+  changeType: ChangeType;
+  payload: Record<string, unknown>;
+  targetId: number;
+  nonce: number; // changes per click so the same code re-triggers the prefill effect
 };
 
 export type Entity = {

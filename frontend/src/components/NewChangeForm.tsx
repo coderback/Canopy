@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { createChange, seedDemo, type ChangeType, type Entity, type Run } from "@/lib/api";
+import { useEffect, useState } from "react";
+import {
+  createChange,
+  seedDemo,
+  type ChangeType,
+  type DriftPrefill,
+  type Entity,
+  type Run,
+} from "@/lib/api";
 import { Button } from "./ui";
 
 const PREFILLS: Record<ChangeType, string> = {
@@ -34,19 +41,35 @@ const TYPES: { value: ChangeType; label: string }[] = [
 export default function NewChangeForm({
   entities,
   onRun,
+  prefill,
 }: {
   entities: Entity[];
   onRun: (run: Run) => void;
+  prefill?: DriftPrefill | null;
 }) {
   const [changeType, setChangeType] = useState<ChangeType>("item");
   const [payloadText, setPayloadText] = useState(PREFILLS.item);
   const [selected, setSelected] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fromDrift, setFromDrift] = useState(false);
+
+  // Apply a drift-resolution prefill: set type, payload and the single target
+  // org, then let the user review before proposing. `nonce` re-triggers on
+  // repeat clicks of the same code.
+  useEffect(() => {
+    if (!prefill) return;
+    setChangeType(prefill.changeType);
+    setPayloadText(JSON.stringify(prefill.payload, null, 2));
+    setSelected([prefill.targetId]);
+    setFromDrift(true);
+    setError(null);
+  }, [prefill]);
 
   function pickType(t: ChangeType) {
     setChangeType(t);
     setPayloadText(PREFILLS[t]);
+    setFromDrift(false);
   }
 
   function toggle(id: number) {
@@ -95,6 +118,14 @@ export default function NewChangeForm({
         Change a contact, item, account code or tracking category once — Canopy maps it to each
         organisation&apos;s own chart and fans out the writes.
       </p>
+
+      {fromDrift && (
+        <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+          Resolving a detected drift — review the account below, then <b>Propose</b>. Canopy
+          maps it to the target org and flags anything unsafe (e.g. a same-named account under a
+          different code) for review before any write.
+        </div>
+      )}
 
       <div className="mb-3 inline-flex flex-wrap gap-1 rounded-lg bg-surface-sunken p-1 ring-1 ring-inset ring-border">
         {TYPES.map((t) => (

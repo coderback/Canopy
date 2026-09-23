@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { Entity, Run } from "@/lib/api";
+import { useEffect, useState } from "react";
+import type { DriftPrefill, Entity, Run } from "@/lib/api";
 import { Segmented } from "./ui";
 import NewChangeForm from "./NewChangeForm";
 import IngestForm from "./IngestForm";
@@ -13,11 +13,18 @@ type Mode = "propagate" | "ingest";
 export default function ComposePanel({
   entities,
   onRun,
+  prefill,
 }: {
   entities: Entity[];
   onRun: (run: Run) => void;
+  prefill?: DriftPrefill | null;
 }) {
   const [mode, setMode] = useState<Mode>("propagate");
+
+  // A drift-resolution prefill is always a propagation — snap the panel to it.
+  useEffect(() => {
+    if (prefill) setMode("propagate");
+  }, [prefill]);
 
   return (
     <div className="p-4">
@@ -37,7 +44,7 @@ export default function ComposePanel({
       </div>
 
       {mode === "propagate" ? (
-        <NewChangeForm entities={entities} onRun={onRun} />
+        <NewChangeForm entities={entities} onRun={onRun} prefill={prefill} />
       ) : (
         <IngestForm entities={entities} onRun={onRun} />
       )}

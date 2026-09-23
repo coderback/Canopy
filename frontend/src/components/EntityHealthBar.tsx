@@ -1,10 +1,19 @@
 "use client";
 
-import type { Entity } from "@/lib/api";
+import type { DriftEntry, Entity } from "@/lib/api";
 
 /** Compact live status of every connected org — the multi-entity story, always
- * visible in the header rather than eating a full dashboard card. */
-export default function EntityHealthBar({ entities }: { entities: Entity[] }) {
+ * visible in the header rather than eating a full dashboard card.
+ *
+ * A red (drifted) org is clickable: it hands its top drift to `onResolve`, which
+ * the compose form turns into a pre-filled, human-approved propagation. */
+export default function EntityHealthBar({
+  entities,
+  onResolve,
+}: {
+  entities: Entity[];
+  onResolve?: (entity: Entity, drift: DriftEntry) => void;
+}) {
   if (entities.length === 0) {
     return (
       <span className="text-xs text-muted">
@@ -28,20 +37,27 @@ export default function EntityHealthBar({ entities }: { entities: Entity[] }) {
             : fullyCached
               ? "bg-emerald-500"
               : "bg-amber-400";
+          const resolvable = drifted && onResolve && h!.drift.length > 0;
+          const Tag = resolvable ? "button" : "span";
           return (
-            <span
+            <Tag
               key={e.id}
-              title={healthTitle(e)}
+              title={
+                resolvable
+                  ? `${healthTitle(e)}\n\nClick to resolve: propagate ${h!.drift[0].code} to ${e.name}`
+                  : healthTitle(e)
+              }
+              onClick={resolvable ? () => onResolve!(e, h!.drift[0]) : undefined}
               className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border bg-surface px-2.5 py-1 text-xs font-medium text-slate-700 ${
                 drifted ? "border-rose-300" : "border-border"
-              }`}
+              } ${resolvable ? "cursor-pointer hover:bg-rose-50 hover:border-rose-400" : ""}`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
               {e.name}
               {drifted && (
                 <span className="font-semibold text-rose-600">{h.drift_total}</span>
               )}
-            </span>
+            </Tag>
           );
         })}
       </div>
