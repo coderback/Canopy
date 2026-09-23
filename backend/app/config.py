@@ -13,13 +13,19 @@ class Settings(BaseSettings):
     # Only request scopes the app has enabled in its Xero portal config, or the
     # authorize call fails with `invalid_scope`. Phase 1 (item/account/contact/
     # tracking) needs settings + contacts. Phase 2 universal ingest writes manual
-    # journals, which require `accounting.transactions` — enable it on the app in
-    # the Xero portal Configuration, then re-consent (GET /auth/xero/connect) so the
-    # stored token carries it, or manual-journal writes 403. (Same scope later
-    # unlocks Phase 3 bills + purchase orders.)
+    # journals, which require the granular `accounting.manualjournals` scope —
+    # re-consent (GET /auth/xero/connect) so the stored token carries it, or
+    # manual-journal writes 403.
+    #
+    # NB: the broad `accounting.transactions` scope was deprecated in Xero's
+    # 2 Mar 2026 granular-scopes change. Apps created on/after that date (ours)
+    # can ONLY request granular scopes — asking for the broad one fails the
+    # authorize call with `invalid_scope`. `accounting.manualjournals` is the
+    # granular replacement for the ManualJournals endpoint; settings + contacts
+    # are unaffected by the restructuring and stay as-is.
     xero_scopes: str = (
         "offline_access openid profile email "
-        "accounting.settings accounting.contacts accounting.transactions"
+        "accounting.settings accounting.contacts accounting.manualjournals"
     )
 
     # LLM = Azure AI Foundry via the OpenAI-compatible SDK (mapping/ingest/matching

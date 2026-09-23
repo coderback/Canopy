@@ -9,9 +9,10 @@ Usage (from the backend/ dir, venv active):
     python scripts/smoke_ingest.py             # also writes DRAFT journals + reads back
 
 --dry-run needs only the Phase-1 scopes (accounting.settings) and proves the
-mapping/guards live. The real write needs `accounting.transactions` on the token:
-enable it in the Xero app portal Configuration, then re-consent via
-GET /auth/xero/connect. The script refuses to write if that scope is missing.
+mapping/guards live. The real write needs the granular `accounting.manualjournals`
+scope on the token (the broad `accounting.transactions` was deprecated in Xero's
+2 Mar 2026 change and is rejected as `invalid_scope` for apps created since):
+re-consent via GET /auth/xero/connect. The script refuses to write if it's missing.
 """
 
 import argparse
@@ -50,15 +51,16 @@ async def main(dry_run: bool) -> int:
         print("FAIL: no Xero token stored — connect via GET /auth/xero/connect first.")
         return 2
     scopes = token.get("scope", "")
-    has_txn = "accounting.transactions" in scopes
+    has_txn = "accounting.manualjournals" in scopes
     print(f"token scopes: {scopes}")
-    print(f"accounting.transactions present: {has_txn}")
+    print(f"accounting.manualjournals present: {has_txn}")
     if not dry_run and not has_txn:
         print(
-            "\nFAIL: writing manual journals needs `accounting.transactions`.\n"
-            "  1) Xero app portal -> Configuration -> enable accounting.transactions\n"
-            "  2) re-consent: open GET /auth/xero/connect and approve\n"
-            "  3) re-run this script (or add --dry-run to test read+map only)."
+            "\nFAIL: writing manual journals needs the granular `accounting.manualjournals`"
+            " scope\n(the broad `accounting.transactions` is deprecated and rejected as"
+            " invalid_scope).\n"
+            "  1) re-consent: open GET /auth/xero/connect and approve\n"
+            "  2) re-run this script (or add --dry-run to test read+map only)."
         )
         return 3
 
