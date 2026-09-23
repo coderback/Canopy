@@ -1,0 +1,9 @@
+ROLLER Daily Settlement Export,,,,
+Date,Venue,Payment Method,Gross Amount,Bookings
+2026-07-01,Bristol,CARD,2415.50,178
+2026-07-01,Bristol,CASH,320.00,24
+2026-07-01,London,CARD,3876.25,242
+2026-07-01,London,CASH,190.00,15
+2026-07-01,Manchester,CARD,1544.00,117
+2026-07-01,Manchester,VOUCHER,85,7
+,TOTALS,,8430.75,583
