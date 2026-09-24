@@ -127,10 +127,14 @@ const SOURCE_LABELS: Record<string, string> = {
   code_conflict: "code conflict",
   ai: "AI suggestion",
   manual: "set by a person",
+  unmatched: "no match found",
 };
 
 export function SourceBadge({ source }: { source: string }) {
-  const tone = source === "exact" || source === "manual" ? "emerald" : source === "code_conflict" ? "amber" : "blue";
+  const tone =
+    source === "exact" || source === "manual" ? "emerald"
+      : source === "code_conflict" || source === "unmatched" ? "amber"
+      : "blue";
   return <Badge tone={tone}>{SOURCE_LABELS[source] ?? source}</Badge>;
 }
 

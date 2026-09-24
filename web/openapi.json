@@ -609,7 +609,8 @@
               "name",
               "code_conflict",
               "ai",
-              "manual"
+              "manual",
+              "unmatched"
             ],
             "title": "Source",
             "type": "string"

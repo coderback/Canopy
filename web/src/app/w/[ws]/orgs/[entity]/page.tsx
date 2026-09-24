@@ -81,7 +81,10 @@ function Row({ row, groups, canEdit, decide }: {
   const [assigning, setAssigning] = useState(false);
   const [choice, setChoice] = useState("");
   const m = row.mapping;
-  const target = row.group_account ? `${row.group_account.code} ${row.group_account.name}` : "No group equivalent";
+  const unmatched = m?.source === "unmatched" && m.status !== "confirmed";
+  const target = row.group_account
+    ? `${row.group_account.code} ${row.group_account.name}`
+    : unmatched ? "Needs a group account" : "No group equivalent";
 
   return (
     <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] md:items-start">
@@ -97,7 +100,7 @@ function Row({ row, groups, canEdit, decide }: {
             <p className="text-sm"><span className="text-muted">→</span> <b>{target}</b></p>
             <div className="flex flex-wrap gap-1.5">
               <SourceBadge source={m.source} />
-              {m.status === "suggested" && <ConfidenceBadge value={m.confidence} />}
+              {m.status === "suggested" && m.source !== "unmatched" && <ConfidenceBadge value={m.confidence} />}
               {m.status === "confirmed" && <Badge tone="emerald">confirmed</Badge>}
               {m.status === "rejected" && <Badge tone="red">rejected</Badge>}
             </div>
@@ -120,9 +123,10 @@ function Row({ row, groups, canEdit, decide }: {
             </>
           ) : (
             <>
-              {m.status !== "confirmed" && <Button onClick={() => decide("confirm")}>Confirm</Button>}
-              {m.status === "suggested" && <Button variant="ghost" onClick={() => decide("reject")}>Reject</Button>}
-              <Button variant="ghost" onClick={() => setAssigning(true)}>Change…</Button>
+              {/* Nothing to confirm on an unmatched row: a person has to choose. */}
+              {m.status !== "confirmed" && !unmatched && <Button onClick={() => decide("confirm")}>Confirm</Button>}
+              {m.status === "suggested" && !unmatched && <Button variant="ghost" onClick={() => decide("reject")}>Reject</Button>}
+              <Button variant={unmatched ? "primary" : "ghost"} onClick={() => setAssigning(true)}>{unmatched ? "Choose…" : "Change…"}</Button>
             </>
           )}
         </div>

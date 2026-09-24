@@ -100,7 +100,7 @@ class LocalAccountOut(BaseModel):
 class MappingOut(BaseModel):
     id: str
     status: Literal["suggested", "confirmed", "rejected"]
-    source: Literal["exact", "name", "code_conflict", "ai", "manual"]
+    source: Literal["exact", "name", "code_conflict", "ai", "manual", "unmatched"]
     group_account_id: str | None
     confidence: float
     reasoning: str

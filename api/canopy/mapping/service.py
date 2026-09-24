@@ -21,7 +21,7 @@ from ..standard.models import GroupAccount
 from ..sync.models import EntityAccount
 from ..sync.service import live_accounts
 from ..xero.models import Entity
-from .matcher import EXACT, MANUAL, LocalAccount, StandardAccount, match_accounts
+from .matcher import EXACT, MANUAL, UNMATCHED, LocalAccount, Match, StandardAccount, match_accounts
 from .models import AccountMapping
 from .suggest import Complete, suggest
 
@@ -64,7 +64,13 @@ async def generate_suggestions(
         return SuggestResult(entity_id, 0, 0)
 
     matches, remaining = match_accounts(todo, standard)
-    ai_matches = await suggest(complete, remaining, standard) if (complete and remaining) else []
+    if complete and remaining:
+        ai_matches = await suggest(complete, remaining, standard)
+    else:
+        # Every live account must reach the review queue, even with AI switched off;
+        # otherwise it silently drops out of the workflow and can never be decided.
+        reason = "No deterministic match found. Choose the group account, or mark it local-only."
+        ai_matches = [Match(a.id, None, UNMATCHED, 0.0, reason) for a in remaining]
 
     async with unit_of_work(workspace_id=workspace_id) as s:
         for m in [*matches, *ai_matches]:

@@ -20,6 +20,8 @@ import uuid
 from dataclasses import dataclass
 
 EXACT, NAME, CODE_CONFLICT, AI, MANUAL = "exact", "name", "code_conflict", "ai", "manual"
+# No deterministic match and no AI answer: still gets a row, so a person can assign it.
+UNMATCHED = "unmatched"
 
 # Xero account Type -> Class, for accounts synced without a Class.
 TYPE_CLASS = {
@@ -60,7 +62,9 @@ class Match:
 
 
 def normalise(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+    # "Plant & Machinery" and "Plant and Machinery" are the same account (seen in
+    # real Xero charts), so '&' reads as 'and' before punctuation is dropped.
+    return re.sub(r"[^a-z0-9]+", " ", name.lower().replace("&", " and ")).strip()
 
 
 def account_class(type_: str, explicit: str | None) -> str | None:

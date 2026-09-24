@@ -35,7 +35,7 @@ class AccountMapping(WorkspaceScoped, Base):
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     source: Mapped[str] = mapped_column(String(16), nullable=False)
-    # exact | name | code_conflict | ai | manual
+    # exact | name | code_conflict | ai | manual | unmatched
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     reasoning: Mapped[str] = mapped_column(Text, nullable=False, default="")
     decided_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))

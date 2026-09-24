@@ -660,7 +660,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "exact" | "name" | "code_conflict" | "ai" | "manual";
+            source: "exact" | "name" | "code_conflict" | "ai" | "manual" | "unmatched";
             /**
              * Status
              * @enum {string}

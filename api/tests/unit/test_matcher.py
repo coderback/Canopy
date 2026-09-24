@@ -63,3 +63,10 @@ def test_ambiguous_name_across_two_group_codes_is_not_guessed():
     a = loc("999", "Advertising")
     matches, remaining = match_accounts([a], standard)
     assert matches == [] and remaining == [a]
+
+
+def test_ampersand_and_the_word_and_are_the_same_name():
+    # Seen in real Xero charts: "Plant & Machinery" vs "Plant and Machinery".
+    standard = [g("764", "Plant and Machinery", "FIXED", "ASSET")]
+    (m,), _ = match_accounts([loc("764", "Plant & Machinery", "FIXED")], standard)
+    assert m.source == EXACT

@@ -129,3 +129,19 @@ async def test_csv_import_validates_rows(xero_identity):
     assert bad.status_code == 400 and "Row 2" in bad.json()["error"]["message"]
     assert good.json() == {"accounts": 2}
     assert {(g["code"], g["account_class"]) for g in std} == {("100", "REVENUE"), ("200", "EXPENSE")}
+
+
+async def test_without_ai_every_unplaced_account_still_reaches_review(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, a, b = await _setup(c, xero_identity)
+        await c.post(f"/workspaces/{ws}/standard/seed", json={"entity_id": str(a)})
+        await generate_suggestions(ws, b, None)  # AI switched off
+        rows = {r["account"]["name"]: r for r in (await c.get(f"/workspaces/{ws}/entities/{b}/mappings")).json()}
+        assert all(r["mapping"] is not None for r in rows.values())  # nothing silently dropped
+        unmatched = rows["Trampoline Park Cover"]["mapping"]
+        assert unmatched["source"] == "unmatched" and unmatched["group_account_id"] is None
+        # A person can still resolve it.
+        insurance = next(g for g in (await c.get(f"/workspaces/{ws}/standard")).json() if g["code"] == "410")
+        r = await c.post(f"/workspaces/{ws}/mappings/{unmatched['id']}/decision",
+                         json={"action": "assign", "group_account_id": insurance["id"]})
+    assert r.json()["status"] == "confirmed"
