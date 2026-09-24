@@ -133,3 +133,22 @@ async def test_a_revoked_grant_marks_the_connection_revoked(xero_identity):
     with pytest.raises(ConnectionRevoked):
         await ConnectionTokens(ws, conn, XeroIdentityClient(xero_identity)).access_token()
     assert owner_scalar("select status from xero_connections where id = :c", c=conn) == "revoked"
+
+
+async def test_a_crashing_sync_job_never_leaves_the_org_stuck_on_queued(monkeypatch):
+    from canopy.jobs import app as jobs
+
+    ws, _, eid = await _entity()
+    async with unit_of_work(workspace_id=ws) as s:
+        from canopy.xero.models import Entity
+
+        (await s.get(Entity, eid)).sync_status = "queued"
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("worker crashed before recording the run")
+
+    monkeypatch.setattr(jobs, "sync_entity_accounts", boom)
+    with pytest.raises(RuntimeError):
+        await jobs.sync_accounts.func(workspace_id=str(ws), entity_id=str(eid), tenant_id="tenant-a", kind=FULL)
+    assert owner_scalar("select sync_status from entities where id = :e", e=eid) == "error"
+    assert "worker crashed" in owner_scalar("select sync_error from entities where id = :e", e=eid)

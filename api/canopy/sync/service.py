@@ -124,6 +124,18 @@ async def sync_entity_accounts(
     return SyncResult(entity_id, kind, len(rows), deleted)
 
 
+async def mark_entity_failed(workspace_id: uuid.UUID, entity_id: uuid.UUID, exc: Exception) -> None:
+    """Safety net for failures outside the Xero call (e.g. a crash before the
+    sync run was recorded): never leave an org stuck on queued/running."""
+    message = f"{type(exc).__name__}: {str(exc)[:500]}"
+    async with unit_of_work(workspace_id=workspace_id) as s:
+        await s.execute(
+            update(Entity)
+            .where(Entity.id == entity_id, Entity.sync_status.in_(("queued", "running")))
+            .values(sync_status="error", sync_error=message)
+        )
+
+
 async def _mark_failed(workspace_id: uuid.UUID, entity_id: uuid.UUID, run_id: uuid.UUID, exc: Exception) -> None:
     message = f"{type(exc).__name__}: {str(exc)[:500]}"
     async with unit_of_work(workspace_id=workspace_id) as s:

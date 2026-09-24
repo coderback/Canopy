@@ -15,11 +15,15 @@ import uuid
 import procrastinate
 from sqlalchemy import text
 
+# Register EVERY model: the worker imports only a few services, and SQLAlchemy
+# can't resolve a foreign key (e.g. sync_runs.workspace_id -> workspaces) to a
+# table whose model was never imported.
+from .. import models  # noqa: F401
 from ..core.config import get_settings
 from ..core.db import unit_of_work
 from ..llm import complete_structured
 from ..mapping.service import generate_suggestions
-from ..sync.service import FULL, INCREMENTAL, sync_entity_accounts
+from ..sync.service import FULL, INCREMENTAL, mark_entity_failed, sync_entity_accounts
 from ..xero.client import QuotaExhausted
 from ..xero.tokens import ConnectionRevoked
 
@@ -71,9 +75,13 @@ async def sync_accounts(workspace_id: str, entity_id: str, tenant_id: str, kind:
             workspace_id=workspace_id, entity_id=entity_id, tenant_id=tenant_id, kind=kind
         )
         return
-    except ConnectionRevoked:
+    except ConnectionRevoked as exc:
         log.warning("sync skipped: connection revoked for entity %s", entity_id)
+        await mark_entity_failed(ws, ent, exc)
         return
+    except Exception as exc:
+        await mark_entity_failed(ws, ent, exc)
+        raise
     # New or changed accounts get suggestions straight away.
     await enqueue_suggest(ws, ent)
 
