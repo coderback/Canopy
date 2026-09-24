@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  /* Canopy — refined forest/emerald identity, light. */
+  --background: #f4f6f4; /* faint green-grey app shell */
+  --surface: #ffffff;
+  --surface-sunken: #f8faf8;
+  --foreground: #0f1a14;
+  --muted: #5b6b60;
+  --border: #e3e9e4;
+  --border-strong: #d3dcd5;
+  --brand: #047857; /* emerald-700 */
+  --brand-strong: #065f46; /* emerald-800 */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Subtle canopy wash so the shell doesn't read as flat grey. */
+  background-image:
+    radial-gradient(60rem 40rem at 85% -10%, rgba(4, 120, 87, 0.05), transparent 60%),
+    radial-gradient(50rem 40rem at -10% 0%, rgba(4, 120, 87, 0.04), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* JSON editors / payloads */
+.font-mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Thin, calm scrollbars for the entity strip / payload areas. */
+.canopy-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.canopy-scroll::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.canopy-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
