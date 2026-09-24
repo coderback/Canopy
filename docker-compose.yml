@@ -1,33 +1,67 @@
-# Canopy — full stack. Backend (FastAPI :8000) + frontend (Next.js :3000).
-#   docker compose up --build
-# Secrets (Xero + LLM keys) come from backend/.env — never baked into an image.
+# Canopy v2 — local stack.
+#   docker compose up -d db           # just Postgres, for running the API/tests on the host
+#   docker compose up --build         # everything
+# Secrets (Xero, LLM, token keys) come from api/.env and are never baked into an image.
 services:
-  backend:
-    build: ./backend
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: canopy
+      POSTGRES_PASSWORD: canopy
+      POSTGRES_DB: canopy
+    ports:
+      - "5432:5432"
+    volumes:
+      - canopy-pg:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U canopy -d canopy"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: ./api
+    command: ["alembic", "upgrade", "head"]
+    env_file: ./api/.env
+    environment:
+      MIGRATIONS_DATABASE_URL: postgresql+psycopg://canopy:canopy@db:5432/canopy
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: ./api
+    command: ["python", "-m", "canopy", "api"]
+    env_file: ./api/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://canopy_app:canopy_app@db:5432/canopy
     ports:
       - "8000:8000"
-    env_file:
-      - ./backend/.env
-    environment:
-      # Override the .env sqlite path onto the persisted volume. compose
-      # `environment` wins over `env_file`, so the token DB survives restarts.
-      DATABASE_URL: sqlite:////data/canopy.sqlite3
-      FRONTEND_ORIGIN: http://localhost:3000
-    volumes:
-      - canopy-data:/data
-    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
-  frontend:
+  worker:
+    build: ./api
+    command: ["python", "-m", "canopy", "worker"]
+    env_file: ./api/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://canopy_app:canopy_app@db:5432/canopy
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
     build:
-      context: ./frontend
+      context: ./web
       args:
-        # Host-reachable backend URL, inlined into the client bundle at build time.
+        # Inlined into the browser bundle at build time: must be host-reachable.
         NEXT_PUBLIC_API_BASE: http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:
-      - backend
-    restart: unless-stopped
+      - api
 
 volumes:
-  canopy-data:
+  canopy-pg:

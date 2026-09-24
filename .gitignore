@@ -10,3 +10,10 @@ node_modules/
 /CANOPY-BUILD-PLAN-OG.md
 /docs/market-research.md
 *.sqlite3.bak*
+/docs/production-plan.md
+
+# v2 build artefacts
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.next/
