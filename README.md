@@ -38,8 +38,11 @@ each org is missing) and an exportable mapping that consolidation tools can use.
    accounts is confirmed against it. Confirmed mappings export as CSV.
 7. **Controlled changes** (opt-in per workspace) — create a missing account, rename or edit
    one, or archive one, across orgs:
-   - a preparer proposes a change; **a different person approves it** (the owner can allow
-     self-approval for small teams; it's flagged in the audit log);
+   - a preparer proposes a change; **a different person approves it**. A group with a
+     single approver can have the owner allow self-approval, but only while nobody else
+     can approve, only for changes that bring an org into line with the group standard
+     (never an archive or a code change), and only with a note. Each self-approved change
+     waits in a review queue until someone else reviews it;
    - deterministic checks run before submission and again just before writing — code and
      name unique (archived accounts included), tax type valid for that org and class, no
      system accounts, write access granted — and a failed check means nothing is written;

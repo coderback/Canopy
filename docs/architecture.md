@@ -71,8 +71,19 @@ A `change_set` is one intent; its `change_items` are one operation in one org
 (`cancelled` from draft or submitted).
 
 - **Who:** preparers, admins and the owner author; approvers, admins and the owner decide.
-  The author can't decide their own set unless the workspace allows self-approval
-  (recorded as `self_approved`). Enforced in the service layer, not the UI.
+  The author never rejects their own set (they cancel it) and approves it only when *all*
+  of these hold (`service.self_approval_blocker`):
+  - the owner has allowed self-approval;
+  - no other member holds a deciding role, so it's only ever for a lone approver;
+  - every item only aligns an org to the standard: a create whose payload is exactly the
+    group account's defaults, or a rename (name only) of an account confirmed against a
+    group account to that group account's name. Never an archive or a code change;
+  - the author gives a note.
+
+  The set is recorded as `self_approved` and sits in a review queue (`needs_review`)
+  until a different decider marks it reviewed (`reviewed_by/at/note`, audited as
+  `change.reviewed`; a check constraint forbids the author). All of this is enforced in
+  the service layer; the UI only mirrors it.
 - **Preflight** (`changes/preflight.py`, pure functions): unique code and name across all
   accounts including archived, valid type (no `BANK` creates), tax type exists, is active
   and applies to the account's class in that org, not a system account, not already
