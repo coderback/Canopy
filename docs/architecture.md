@@ -60,8 +60,34 @@ that isn't there yet.
 
 `account_mappings` maps one org account to at most one group account (many-to-one), with
 `status` (suggested / confirmed / rejected), `source` (exact / name / code_conflict / ai /
-manual), confidence and reasoning. A confirmed mapping with no group account means
+unmatched / manual / created), confidence and reasoning. A confirmed mapping with no group account means
 "deliberately local-only". Re-suggesting only rewrites rows still `suggested`.
+
+## Change control (Milestone 2)
+
+A `change_set` is one intent; its `change_items` are one operation in one org
+(`create_account`, `update_account`, `archive_account`). Set lifecycle:
+`draft → submitted → approved | rejected → executing → completed | partial | failed`
+(`cancelled` from draft or submitted).
+
+- **Who:** preparers, admins and the owner author; approvers, admins and the owner decide.
+  The author can't decide their own set unless the workspace allows self-approval
+  (recorded as `self_approved`). Enforced in the service layer, not the UI.
+- **Preflight** (`changes/preflight.py`, pure functions): unique code and name across all
+  accounts including archived, valid type (no `BANK` creates), tax type exists, is active
+  and applies to the account's class in that org, not a system account, not already
+  archived, write scope granted. Runs when items are added, at submit (blocked items stop
+  submission), and again at execution after an incremental sync and a live read of the
+  account.
+- **Execution** (`changes/executor.py`): one job per item under the tenant lock. The
+  `Idempotency-Key` is `canopy-<item>-<attempt>`: automatic retries (429s, timeouts) reuse
+  it; an explicit retry increments the attempt so a cached failure isn't replayed; an item
+  found still `running` (the worker died mid-write) replays the write with the same key
+  instead of re-validating against its own result. Before/after, the mirror, the mapping
+  (a created account is confirmed against its group account, source `created`) and the
+  audit log are updated; the set status rolls up under a row lock.
+- **Switches:** `workspaces.changes_enabled` (owner) and the server kill switch
+  `XERO_WRITES_ENABLED` (on by default in development only).
 
 ## Failure behaviour (tested)
 
@@ -69,3 +95,6 @@ manual), confidence and reasoning. A confirmed mapping with no group account mea
 - Long `Retry-After` / daily limit → job rescheduled, entity marked with the error.
 - Refresh token rejected → connection marked `revoked`; the org needs reconnecting.
 - AI suggests a code that doesn't exist or crosses account classes → discarded by guards.
+- Account changed in Xero after approval → execution preflight fails → nothing written.
+- Xero validation error → the item fails with Xero's message; other orgs continue.
+- Worker dies mid-write → the retry replays the same Idempotency-Key.

@@ -11,16 +11,17 @@ identical. Deterministic matching handles the obvious cases, an AI suggests the 
 a person confirms every mapping. The result is a live gap matrix (which group accounts
 each org is missing) and an exportable mapping that consolidation tools can use.
 
-> **Status:** v2, Milestone 1 (read-only). Writing changes back to Xero through an
-> approval workflow is Milestone 2. The original hackathon build lives on `master`.
+> **Status:** v2. Milestone 1 (read-only mapping) and Milestone 2 (approved changes to
+> accounts) are built. Tracking categories are next. The original hackathon build lives on
+> `master`.
 
 ---
 
 ## How it works
 
 1. **Sign up with Xero** — identity only (`openid profile email`).
-2. **Connect organisations** — an admin grants `accounting.settings.read`. Nothing is
-   ever written to Xero in this milestone; the token can't.
+2. **Connect organisations** — an admin grants `accounting.settings.read`. Connections
+   stay read-only unless write access is deliberately granted later (step 7).
 3. **Sync** — each org's chart is mirrored: full sync on connect and nightly (catches
    deletions), incremental sync (`If-Modified-Since`) in between.
 4. **Group standard** — seed it from one org's chart or import a CSV, then edit.
@@ -35,6 +36,17 @@ each org is missing) and an exportable mapping that consolidation tools can use.
    Regenerating suggestions never overwrites a human decision.
 6. **Gaps & export** — a group account is a gap in an org when none of that org's live
    accounts is confirmed against it. Confirmed mappings export as CSV.
+7. **Controlled changes** (opt-in per workspace) — create a missing account, rename or edit
+   one, or archive one, across orgs:
+   - a preparer proposes a change; **a different person approves it** (the owner can allow
+     self-approval for small teams; it's flagged in the audit log);
+   - deterministic checks run before submission and again just before writing — code and
+     name unique (archived accounts included), tax type valid for that org and class, no
+     system accounts, write access granted — and a failed check means nothing is written;
+   - each org's write carries an `Idempotency-Key`, so retries never double-apply; each
+     result stores the account before and after, and a created account closes its gap;
+   - write access (`accounting.settings`) is granted per org, only once changes are on;
+     `XERO_WRITES_ENABLED=false` stops every write server-wide.
 
 ## Architecture
 
