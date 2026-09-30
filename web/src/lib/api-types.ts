@@ -143,6 +143,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/{workspace_id}/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Changes */
+        get: operations["list_changes_workspaces__workspace_id__changes_get"];
+        put?: never;
+        /** Create Change */
+        post: operations["create_change_workspaces__workspace_id__changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Change */
+        get: operations["get_change_workspaces__workspace_id__changes__set_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve */
+        post: operations["approve_workspaces__workspace_id__changes__set_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_workspaces__workspace_id__changes__set_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Item */
+        post: operations["add_item_workspaces__workspace_id__changes__set_id__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Item */
+        delete: operations["remove_item_workspaces__workspace_id__changes__set_id__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /** Edit Item */
+        patch: operations["edit_item_workspaces__workspace_id__changes__set_id__items__item_id__patch"];
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject */
+        post: operations["reject_workspaces__workspace_id__changes__set_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry */
+        post: operations["retry_workspaces__workspace_id__changes__set_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/changes/{set_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit */
+        post: operations["submit_workspaces__workspace_id__changes__set_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{workspace_id}/entities": {
         parameters: {
             query?: never;
@@ -349,6 +504,24 @@ export interface paths {
         patch: operations["change_role_workspaces__workspace_id__members__membership_id__patch"];
         trace?: never;
     };
+    "/workspaces/{workspace_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings__workspaces__workspace_id__settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Settings */
+        patch: operations["update_settings_workspaces__workspace_id__settings_patch"];
+        trace?: never;
+    };
     "/workspaces/{workspace_id}/standard": {
         parameters: {
             query?: never;
@@ -441,7 +614,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Connect Xero */
+        /**
+         * Connect Xero
+         * @description Connect orgs read-only, or (write=true, once changes are on) re-consent with
+         *     write access. Xero lets the user pick which orgs get the new grant.
+         */
         get: operations["connect_xero_workspaces__workspace_id__xero_connect_get"];
         put?: never;
         post?: never;
@@ -488,6 +665,89 @@ export interface components {
             /** File */
             file: string;
         };
+        /** ChangeDecision */
+        ChangeDecision: {
+            /** Note */
+            note?: string | null;
+        };
+        /** ChangeItemOut */
+        ChangeItemOut: {
+            account: components["schemas"]["LocalAccountOut"] | null;
+            /** After */
+            after: {
+                [key: string]: unknown;
+            } | null;
+            /** Attempt */
+            attempt: number;
+            /** Before */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /** Entity Id */
+            entity_id: string;
+            /** Entity Name */
+            entity_name: string;
+            /** Error */
+            error: string | null;
+            /** Executed At */
+            executed_at: string | null;
+            group_account: components["schemas"]["GroupRef"] | null;
+            /** Id */
+            id: string;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "create_account" | "update_account" | "archive_account";
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Preflight Messages */
+            preflight_messages: string[];
+            /**
+             * Preflight Status
+             * @enum {string}
+             */
+            preflight_status: "ok" | "blocked";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "running" | "succeeded" | "failed" | "skipped";
+        };
+        /** ChangeSetOut */
+        ChangeSetOut: {
+            author: components["schemas"]["UserOut"];
+            /** Created At */
+            created_at: string;
+            /** Decided At */
+            decided_at: string | null;
+            decided_by: components["schemas"]["UserOut"] | null;
+            /** Decision Note */
+            decision_note: string | null;
+            /** Id */
+            id: string;
+            /** Item Counts */
+            item_counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items?: components["schemas"]["ChangeItemOut"][] | null;
+            /** Reason */
+            reason: string;
+            /** Self Approved */
+            self_approved: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "submitted" | "approved" | "rejected" | "executing" | "completed" | "partial" | "failed" | "cancelled";
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Title */
+            title: string;
+        };
         /** ConfirmedOut */
         ConfirmedOut: {
             /** Confirmed */
@@ -517,6 +777,8 @@ export interface components {
         };
         /** EntityOut */
         EntityOut: {
+            /** Can Write */
+            can_write: boolean;
             /** Id */
             id: string;
             /** Last Synced At */
@@ -635,6 +897,34 @@ export interface components {
             /** Role */
             role: string;
         };
+        /** ItemEdit */
+        ItemEdit: {
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /** ItemSpec */
+        ItemSpec: {
+            /** Entity Account Id */
+            entity_account_id?: string | null;
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+            /** Group Account Id */
+            group_account_id?: string | null;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "create_account" | "update_account" | "archive_account";
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** LocalAccountOut */
         LocalAccountOut: {
             /** Code */
@@ -660,7 +950,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "exact" | "name" | "code_conflict" | "ai" | "manual" | "unmatched";
+            source: "exact" | "name" | "code_conflict" | "ai" | "manual" | "unmatched" | "created";
             /**
              * Status
              * @enum {string}
@@ -693,6 +983,21 @@ export interface components {
             role: string;
             /** User Id */
             user_id: string;
+        };
+        /** NewChange */
+        NewChange: {
+            /**
+             * Items
+             * @default []
+             */
+            items: components["schemas"]["ItemSpec"][];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Title */
+            title: string;
         };
         /** NewGroupAccount */
         NewGroupAccount: {
@@ -747,6 +1052,22 @@ export interface components {
              * Format: uuid
              */
             entity_id: string;
+        };
+        /** SettingsChange */
+        SettingsChange: {
+            /** Allow Self Approval */
+            allow_self_approval?: boolean | null;
+            /** Changes Enabled */
+            changes_enabled?: boolean | null;
+        };
+        /** SettingsOut */
+        SettingsOut: {
+            /** Allow Self Approval */
+            allow_self_approval: boolean;
+            /** Changes Enabled */
+            changes_enabled: boolean;
+            /** Writes Enabled On Server */
+            writes_enabled_on_server: boolean;
         };
         /** UserOut */
         UserOut: {
@@ -1000,6 +1321,378 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEventOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_changes_workspaces__workspace_id__changes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_change_workspaces__workspace_id__changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_change_workspaces__workspace_id__changes__set_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_workspaces__workspace_id__changes__set_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_workspaces__workspace_id__changes__set_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_item_workspaces__workspace_id__changes__set_id__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemSpec"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_item_workspaces__workspace_id__changes__set_id__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_item_workspaces__workspace_id__changes__set_id__items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_workspaces__workspace_id__changes__set_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_workspaces__workspace_id__changes__set_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_workspaces__workspace_id__changes__set_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
                 };
             };
             /** @description Validation Error */
@@ -1465,6 +2158,72 @@ export interface operations {
             };
         };
     };
+    get_settings__workspaces__workspace_id__settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_settings_workspaces__workspace_id__settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_standard_workspaces__workspace_id__standard_get: {
         parameters: {
             query?: never;
@@ -1639,7 +2398,9 @@ export interface operations {
     };
     connect_xero_workspaces__workspace_id__xero_connect_get: {
         parameters: {
-            query?: never;
+            query?: {
+                write?: boolean;
+            };
             header?: never;
             path: {
                 workspace_id: string;

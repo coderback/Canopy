@@ -162,3 +162,19 @@ export function PageTitle({ title, subtitle, action }: { title: string; subtitle
     </div>
   );
 }
+
+const CHANGE_TONES: Record<string, "slate" | "emerald" | "amber" | "red" | "blue"> = {
+  draft: "slate", submitted: "blue", approved: "blue", executing: "amber", completed: "emerald",
+  partial: "amber", failed: "red", rejected: "red", cancelled: "slate",
+  pending: "slate", running: "amber", succeeded: "emerald", skipped: "slate",
+};
+
+export function ChangeBadge({ status }: { status: string }) {
+  return <Badge tone={CHANGE_TONES[status] ?? "slate"}>{status}</Badge>;
+}
+
+export const OPERATION_LABELS: Record<string, string> = {
+  create_account: "Create account",
+  update_account: "Edit account",
+  archive_account: "Archive account",
+};

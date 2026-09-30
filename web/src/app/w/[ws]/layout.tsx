@@ -11,8 +11,10 @@ const TABS = [
   { href: "", label: "Overview" },
   { href: "/standard", label: "Group standard" },
   { href: "/gaps", label: "Gaps" },
+  { href: "/changes", label: "Changes" },
   { href: "/members", label: "Members" },
   { href: "/audit", label: "Audit log", adminOnly: true },
+  { href: "/settings", label: "Settings" },
 ];
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {

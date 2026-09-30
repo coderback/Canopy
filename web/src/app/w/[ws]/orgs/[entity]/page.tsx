@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, type GroupAccount, type MappingRow } from "@/lib/api";
 import { useRole } from "@/lib/session";
@@ -14,20 +14,37 @@ const needsReview = (r: MappingRow) => !r.mapping || r.mapping.status !== "confi
 
 export default function OrgMapping() {
   const { ws, entity } = useParams<{ ws: string; entity: string }>();
-  const { isAdmin } = useRole(ws);
+  const { isAdmin, role } = useRole(ws);
+  const router = useRouter();
   const rows = useData(() => api.mappings(ws, entity));
   const standard = useData(() => api.standard(ws));
   const entities = useData(() => api.entities(ws));
+  const settings = useData(() => api.settings(ws));
   const [filter, setFilter] = useState<Filter>("review");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  if (!rows.data || !standard.data || !entities.data) return <Loading />;
+  if (!rows.data || !standard.data || !entities.data || !settings.data) return <Loading />;
+  const canPropose = settings.data.changes_enabled && ["owner", "admin", "preparer"].includes(role ?? "");
   const org = entities.data.find((e) => e.id === entity);
   const all = rows.data;
   const shown = all.filter((r) => filter === "all" || (filter === "review" ? needsReview(r) : !needsReview(r)));
   const exactPending = all.filter((r) => r.mapping?.status === "suggested" && r.mapping.source === "exact").length;
   const active = standard.data.filter((g) => g.status === "active");
+
+  // One-click changes start a draft for review; nothing is written until approved.
+  async function propose(title: string, operation: "update_account" | "archive_account", accountId: string,
+    payload?: Record<string, unknown>) {
+    setError(null);
+    try {
+      const change = await api.createChange(ws, title, [
+        { operation, entity_id: entity, entity_account_id: accountId, payload: payload ?? null },
+      ]);
+      router.push(`/w/${ws}/changes/${change.id}`);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   async function act(fn: () => Promise<unknown>, message?: string) {
     setError(null);
@@ -64,19 +81,26 @@ export default function OrgMapping() {
       <Card className="divide-y divide-border">
         {shown.length === 0 && <p className="p-6 text-sm text-muted">Nothing here.</p>}
         {shown.map((r) => (
-          <Row key={r.account.id} row={r} groups={active} canEdit={isAdmin}
-            decide={(action, groupId) => act(() => api.decide(ws, r.mapping!.id, { action, group_account_id: groupId ?? null }))} />
+          <Row key={r.account.id} row={r} groups={active} canEdit={isAdmin} canPropose={canPropose}
+            decide={(action, groupId) => act(() => api.decide(ws, r.mapping!.id, { action, group_account_id: groupId ?? null }))}
+            rename={(name) => propose(`Rename ${r.account.code ?? ""} ${r.account.name} in ${org?.name ?? "org"}`,
+              "update_account", r.account.id, { name })}
+            archive={() => propose(`Archive ${r.account.code ?? ""} ${r.account.name} in ${org?.name ?? "org"}`,
+              "archive_account", r.account.id)} />
         ))}
       </Card>
     </>
   );
 }
 
-function Row({ row, groups, canEdit, decide }: {
+function Row({ row, groups, canEdit, canPropose, decide, rename, archive }: {
   row: MappingRow;
   groups: GroupAccount[];
   canEdit: boolean;
+  canPropose: boolean;
   decide: (action: "confirm" | "reject" | "assign", groupId?: string | null) => void;
+  rename: (name: string) => void;
+  archive: () => void;
 }) {
   const [assigning, setAssigning] = useState(false);
   const [choice, setChoice] = useState("");
@@ -106,6 +130,16 @@ function Row({ row, groups, canEdit, decide }: {
             </div>
             <p className="text-xs text-slate-600">{m.reasoning}</p>
           </>
+        )}
+        {canPropose && (
+          <div className="flex flex-wrap gap-3 pt-1 text-xs">
+            {m?.status === "confirmed" && row.group_account && row.group_account.name !== row.account.name && (
+              <button className="text-brand-strong underline" onClick={() => rename(row.group_account!.name)}>
+                Propose renaming to “{row.group_account.name}”
+              </button>
+            )}
+            <button className="text-slate-600 underline" onClick={archive}>Propose archiving</button>
+          </div>
         )}
       </div>
       {canEdit && m && (

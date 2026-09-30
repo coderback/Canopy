@@ -13,6 +13,10 @@ export type GapMatrix = S["GapMatrix"];
 export type Member = S["MemberOut"];
 export type Invitation = S["InvitationOut"];
 export type AuditEvent = S["AuditEventOut"];
+export type Settings = S["SettingsOut"];
+export type ChangeSet = S["ChangeSetOut"];
+export type ChangeItem = S["ChangeItemOut"];
+export type ItemSpec = S["ItemSpec"];
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -58,7 +62,8 @@ const ws = (id: string) => `/workspaces/${id}`;
 
 // Browser navigations (full-page redirects through Xero).
 export const loginUrl = (redirectTo = "/") => `${API_BASE}/auth/login?redirect_to=${encodeURIComponent(redirectTo)}`;
-export const connectUrl = (workspaceId: string) => `${API_BASE}${ws(workspaceId)}/xero/connect`;
+export const connectUrl = (workspaceId: string, write = false) =>
+  `${API_BASE}${ws(workspaceId)}/xero/connect${write ? "?write=true" : ""}`;
 export const exportUrl = (workspaceId: string) => `${API_BASE}${ws(workspaceId)}/export.csv`;
 
 export const api = {
@@ -103,4 +108,23 @@ export const api = {
   revokeInvitation: (w: string, id: string) => request<void>("DELETE", `${ws(w)}/invitations/${id}`),
 
   audit: (w: string) => request<AuditEvent[]>("GET", `${ws(w)}/audit`),
+
+  settings: (w: string) => request<Settings>("GET", `${ws(w)}/settings`),
+  updateSettings: (w: string, body: S["SettingsChange"]) => request<Settings>("PATCH", `${ws(w)}/settings`, body),
+
+  changes: (w: string) => request<ChangeSet[]>("GET", `${ws(w)}/changes`),
+  change: (w: string, id: string) => request<ChangeSet>("GET", `${ws(w)}/changes/${id}`),
+  createChange: (w: string, title: string, items: ItemSpec[], reason = "") =>
+    request<ChangeSet>("POST", `${ws(w)}/changes`, { title, reason, items }),
+  editChangeItem: (w: string, id: string, itemId: string, payload: Record<string, unknown>) =>
+    request<ChangeSet>("PATCH", `${ws(w)}/changes/${id}/items/${itemId}`, { payload }),
+  removeChangeItem: (w: string, id: string, itemId: string) =>
+    request<ChangeSet>("DELETE", `${ws(w)}/changes/${id}/items/${itemId}`),
+  submitChange: (w: string, id: string) => request<ChangeSet>("POST", `${ws(w)}/changes/${id}/submit`),
+  approveChange: (w: string, id: string, note?: string) =>
+    request<ChangeSet>("POST", `${ws(w)}/changes/${id}/approve`, { note: note ?? null }),
+  rejectChange: (w: string, id: string, note: string) =>
+    request<ChangeSet>("POST", `${ws(w)}/changes/${id}/reject`, { note }),
+  cancelChange: (w: string, id: string) => request<ChangeSet>("POST", `${ws(w)}/changes/${id}/cancel`),
+  retryChange: (w: string, id: string) => request<ChangeSet>("POST", `${ws(w)}/changes/${id}/retry`),
 };
