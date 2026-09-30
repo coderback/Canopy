@@ -45,10 +45,13 @@ export default function SettingsPage() {
           checked={s.changes_enabled} disabled={!isOwner} onChange={(v) => toggle("changes_enabled", v)}
         />
         <Toggle
-          label="Allow self-approval"
-          help="By default the person who proposes a change can't approve it. Turn this on only for small teams; every self-approved change is flagged in the audit log."
+          label="Allow self-approval when you're the only approver"
+          help="Normally the person who proposes a change can't approve it. With this on, a lone approver can approve their own change, but only one that brings an organisation into line with the group standard (adding a group account, or renaming an account to its group name), never an archive or a code change, and only with a note saying why. Each one waits in a review queue until someone else looks at it."
           checked={s.allow_self_approval} disabled={!isOwner || !s.changes_enabled}
           onChange={(v) => toggle("allow_self_approval", v)}
+          note={s.allow_self_approval && (s.approvers > 1
+            ? `Not in effect: ${s.approvers} people can approve changes, so every change needs a second person.`
+            : "In effect: you have one approver.")}
         />
       </Card>
       {!isOwner && <p className="mt-2 text-xs text-muted">Only the workspace owner can change these.</p>}
@@ -74,14 +77,16 @@ export default function SettingsPage() {
   );
 }
 
-function Toggle({ label, help, checked, disabled, onChange }: {
+function Toggle({ label, help, checked, disabled, onChange, note }: {
   label: string; help: string; checked: boolean; disabled: boolean; onChange: (v: boolean) => void;
+  note?: string | false;
 }) {
   return (
     <label className={`flex items-start justify-between gap-6 px-4 py-4 ${disabled ? "opacity-70" : "cursor-pointer"}`}>
       <span>
         <span className="block text-sm font-medium text-slate-900">{label}</span>
         <span className="mt-0.5 block text-xs text-muted">{help}</span>
+        {note && <span className="mt-1.5 block text-xs font-medium text-slate-700">{note}</span>}
       </span>
       <input type="checkbox" role="switch" className="mt-1 h-4 w-4 accent-emerald-600" checked={checked}
         disabled={disabled} onChange={(e) => onChange(e.target.checked)} />

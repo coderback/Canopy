@@ -17,17 +17,19 @@ export default function ChangePage() {
   const { me } = useSession();
   const { role } = useRole(ws);
   const change = useData(() => api.change(ws, id), (c: ChangeSet) => LIVE.has(c.status));
-  const settings = useData(() => api.settings(ws));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!change.data || !settings.data || !me) return <Loading />;
+  if (!change.data || !me) return <Loading />;
   const c = change.data;
   const isAuthor = c.author.id === me.user.id;
+  const isDecider = DECIDERS.includes(role ?? "");
   const canEdit = c.status === "draft" && (isAuthor || role === "owner" || role === "admin");
-  const canDecide = c.status === "submitted" && DECIDERS.includes(role ?? "") &&
-    (!isAuthor || settings.data.allow_self_approval);
+  const canDecide = c.status === "submitted" && isDecider && !isAuthor;
+  // The API tells the author whether this change qualifies; it enforces the same rules.
+  const canSelfApprove = c.status === "submitted" && isAuthor && isDecider && !c.self_approval_blocker;
+  const canReview = c.needs_review && isDecider && !isAuthor;
   const canCancel = ["draft", "submitted"].includes(c.status) && (isAuthor || role === "owner" || role === "admin");
   const canRetry = ["partial", "failed"].includes(c.status) && DECIDERS.includes(role ?? "");
 
@@ -58,10 +60,30 @@ export default function ChangePage() {
       <ErrorNote message={error ?? change.error} />
       {c.decided_by && (
         <p className="mb-4 text-sm text-muted">
-          {c.status === "rejected" ? "Rejected" : "Approved"} by {c.decided_by.name || c.decided_by.email}
+          {c.status === "rejected" ? "Rejected" : c.self_approved ? "Self-approved" : "Approved"} by{" "}
+          {c.decided_by.name || c.decided_by.email}
           {c.decision_note && <>: “{c.decision_note}”</>}
         </p>
       )}
+      {c.self_approved && (c.reviewed_by ? (
+        <p className="mb-4 text-sm text-muted">
+          Reviewed by {c.reviewed_by.name || c.reviewed_by.email}
+          {c.review_note && <>: “{c.review_note}”</>}
+        </p>
+      ) : (
+        <Card className="mb-4 border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <p>Self-approved: nobody else has looked at this change yet. Someone who can approve changes should review it.</p>
+          {canReview && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Review note (optional)"
+                aria-label="Review note" className="min-w-64 flex-1 rounded-lg border border-border-strong bg-white px-3 py-2 text-sm" />
+              <Button disabled={busy} onClick={() => act(() => api.reviewChange(ws, c.id, note), () => setNote(""))}>
+                Mark reviewed
+              </Button>
+            </div>
+          )}
+        </Card>
+      ))}
 
       <Card className="divide-y divide-border">
         {(c.items ?? []).map((item) => (
@@ -90,8 +112,27 @@ export default function ChangePage() {
             </Button>
           </div>
         )}
-        {c.status === "submitted" && isAuthor && !canDecide && (
-          <p className="text-sm text-muted">Waiting for another approver. You can&apos;t approve your own change.</p>
+        {canSelfApprove && (
+          <div className="w-full rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p>
+              You proposed this change and you&apos;re the only approver, so you can approve it yourself: it only
+              brings organisations into line with the group standard. Say why; the change waits in the review queue
+              until someone else looks at it.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why approve it yourself? (required)"
+                aria-label="Self-approval note" className="min-w-64 flex-1 rounded-lg border border-border-strong bg-white px-3 py-2 text-sm" />
+              <Button disabled={busy || !note.trim()} onClick={() => act(() => api.approveChange(ws, c.id, note))}>
+                Approve my own change
+              </Button>
+            </div>
+          </div>
+        )}
+        {c.status === "submitted" && isAuthor && !canSelfApprove && (
+          <p className="w-full text-sm text-muted">
+            Waiting for another approver. You can&apos;t approve your own change
+            {c.self_approval_blocker ? <>: {c.self_approval_blocker}</> : "."}
+          </p>
         )}
         {canRetry && <Button disabled={busy} onClick={() => act(() => api.retryChange(ws, c.id))}>Retry failed items</Button>}
         {canCancel && (

@@ -112,7 +112,8 @@ export const api = {
   settings: (w: string) => request<Settings>("GET", `${ws(w)}/settings`),
   updateSettings: (w: string, body: S["SettingsChange"]) => request<Settings>("PATCH", `${ws(w)}/settings`, body),
 
-  changes: (w: string) => request<ChangeSet[]>("GET", `${ws(w)}/changes`),
+  changes: (w: string, needsReview = false) =>
+    request<ChangeSet[]>("GET", `${ws(w)}/changes${needsReview ? "?needs_review=true" : ""}`),
   change: (w: string, id: string) => request<ChangeSet>("GET", `${ws(w)}/changes/${id}`),
   createChange: (w: string, title: string, items: ItemSpec[], reason = "") =>
     request<ChangeSet>("POST", `${ws(w)}/changes`, { title, reason, items }),
@@ -125,6 +126,8 @@ export const api = {
     request<ChangeSet>("POST", `${ws(w)}/changes/${id}/approve`, { note: note ?? null }),
   rejectChange: (w: string, id: string, note: string) =>
     request<ChangeSet>("POST", `${ws(w)}/changes/${id}/reject`, { note }),
+  reviewChange: (w: string, id: string, note: string) =>
+    request<ChangeSet>("POST", `${ws(w)}/changes/${id}/review`, { note: note || null }),
   cancelChange: (w: string, id: string) => request<ChangeSet>("POST", `${ws(w)}/changes/${id}/cancel`),
   retryChange: (w: string, id: string) => request<ChangeSet>("POST", `${ws(w)}/changes/${id}/retry`),
 };

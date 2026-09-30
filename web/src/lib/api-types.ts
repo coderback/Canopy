@@ -281,6 +281,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/{workspace_id}/changes/{set_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review */
+        post: operations["review_workspaces__workspace_id__changes__set_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{workspace_id}/changes/{set_id}/submit": {
         parameters: {
             query?: never;
@@ -734,8 +751,17 @@ export interface components {
             };
             /** Items */
             items?: components["schemas"]["ChangeItemOut"][] | null;
+            /** Needs Review */
+            needs_review: boolean;
             /** Reason */
             reason: string;
+            /** Review Note */
+            review_note: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            reviewed_by: components["schemas"]["UserOut"] | null;
+            /** Self Approval Blocker */
+            self_approval_blocker?: string | null;
             /** Self Approved */
             self_approved: boolean;
             /**
@@ -1064,6 +1090,8 @@ export interface components {
         SettingsOut: {
             /** Allow Self Approval */
             allow_self_approval: boolean;
+            /** Approvers */
+            approvers: number;
             /** Changes Enabled */
             changes_enabled: boolean;
             /** Writes Enabled On Server */
@@ -1336,7 +1364,9 @@ export interface operations {
     };
     list_changes_workspaces__workspace_id__changes_get: {
         parameters: {
-            query?: never;
+            query?: {
+                needs_review?: boolean;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -1653,6 +1683,42 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeSetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_workspaces__workspace_id__changes__set_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                set_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeDecision"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

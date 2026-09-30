@@ -341,9 +341,56 @@
             ],
             "title": "Items"
           },
+          "needs_review": {
+            "title": "Needs Review",
+            "type": "boolean"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"
+          },
+          "review_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Note"
+          },
+          "reviewed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewed_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "self_approval_blocker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Self Approval Blocker"
           },
           "self_approved": {
             "title": "Self Approved",
@@ -389,6 +436,10 @@
           "decided_by",
           "decision_note",
           "self_approved",
+          "needs_review",
+          "reviewed_by",
+          "reviewed_at",
+          "review_note",
           "created_at",
           "submitted_at",
           "decided_at",
@@ -1285,6 +1336,10 @@
             "title": "Allow Self Approval",
             "type": "boolean"
           },
+          "approvers": {
+            "title": "Approvers",
+            "type": "integer"
+          },
           "changes_enabled": {
             "title": "Changes Enabled",
             "type": "boolean"
@@ -1297,7 +1352,8 @@
         "required": [
           "changes_enabled",
           "allow_self_approval",
-          "writes_enabled_on_server"
+          "writes_enabled_on_server",
+          "approvers"
         ],
         "title": "SettingsOut",
         "type": "object"
@@ -1712,6 +1768,16 @@
               "format": "uuid",
               "title": "Workspace Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "needs_review",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Needs Review",
+              "type": "boolean"
             }
           }
         ],
@@ -2275,6 +2341,69 @@
           }
         },
         "summary": "Retry",
+        "tags": [
+          "changes"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/changes/{set_id}/review": {
+      "post": {
+        "operationId": "review_workspaces__workspace_id__changes__set_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "set_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Set Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeSetOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review",
         "tags": [
           "changes"
         ]

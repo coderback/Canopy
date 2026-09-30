@@ -14,6 +14,7 @@ export default function Overview() {
   const { isAdmin } = useRole(ws);
   const entities = useData(() => api.entities(ws), (list: Entity[]) => list.some((e) => BUSY.has(e.sync_status)));
   const standard = useData(() => api.standard(ws));
+  const toReview = useData(() => api.changes(ws, true));
 
   if (!entities.data || !standard.data) return <Loading />;
   const orgs = entities.data;
@@ -35,6 +36,15 @@ export default function Overview() {
         action={isAdmin && <a href={connectUrl(ws)} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Connect Xero organisations</a>}
       />
       <ErrorNote message={entities.error} />
+      {!!toReview.data?.length && (
+        <Card className="mb-4 flex flex-wrap items-center justify-between gap-2 border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <span>
+            {toReview.data.length} self-approved {toReview.data.length === 1 ? "change is" : "changes are"} waiting for
+            someone else to review {toReview.data.length === 1 ? "it" : "them"}.
+          </span>
+          <Link href={`/w/${ws}/changes?review=1`} className="font-medium underline">Review queue →</Link>
+        </Card>
+      )}
       <Setup orgs={orgs} standard={standard.data} ws={ws} />
       <Card className="mt-4 overflow-hidden">
         {orgs.length === 0 ? (
