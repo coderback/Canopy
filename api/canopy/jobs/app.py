@@ -19,6 +19,7 @@ from sqlalchemy import text
 # can't resolve a foreign key (e.g. sync_runs.workspace_id -> workspaces) to a
 # table whose model was never imported.
 from .. import models  # noqa: F401
+from ..changes.executor import execute_item
 from ..core.config import get_settings
 from ..core.db import unit_of_work
 from ..llm import complete_structured
@@ -90,6 +91,28 @@ async def sync_accounts(workspace_id: str, entity_id: str, tenant_id: str, kind:
 async def suggest_mappings(workspace_id: str, entity_id: str, refresh: bool = False) -> None:
     complete = complete_structured if llm_configured() else None
     await generate_suggestions(uuid.UUID(workspace_id), uuid.UUID(entity_id), complete, refresh=refresh)
+
+
+async def enqueue_change_items(workspace_id: uuid.UUID, items: list[tuple[uuid.UUID, str]]) -> None:
+    """One job per approved item, serialised per tenant like every Xero call."""
+    for item_id, tenant_id in items:
+        try:
+            await execute_change_item.configure(
+                lock=f"tenant:{tenant_id}", queueing_lock=f"change-item:{item_id}"
+            ).defer_async(workspace_id=str(workspace_id), item_id=str(item_id), tenant_id=tenant_id)
+        except procrastinate.exceptions.AlreadyEnqueued:
+            pass
+
+
+@app.task(name="execute_change_item", queue="xero")
+async def execute_change_item(workspace_id: str, item_id: str, tenant_id: str) -> None:
+    try:
+        await execute_item(uuid.UUID(workspace_id), uuid.UUID(item_id))
+    except QuotaExhausted as exc:
+        log.info("change item deferred: %s", exc)
+        await execute_change_item.configure(lock=f"tenant:{tenant_id}", schedule_at=exc.retry_at).defer_async(
+            workspace_id=workspace_id, item_id=item_id, tenant_id=tenant_id
+        )
 
 
 @app.periodic(cron="0 2 * * *")

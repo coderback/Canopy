@@ -15,7 +15,8 @@ from ..audit import service as audit
 from ..audit.models import AuditEvent
 from ..auth import service as auth_service
 from ..auth.models import User
-from ..core.errors import AppError, NotFound
+from ..core.config import get_settings
+from ..core.errors import AppError, Conflict, NotFound
 from ..core.models_base import utcnow
 from ..core.security import hash_token, new_token
 from ..jobs.app import enqueue_suggest, enqueue_sync
@@ -23,7 +24,9 @@ from ..mapping import service as mapping
 from ..standard import service as standard
 from ..sync.service import FULL, INCREMENTAL
 from ..tenancy.models import Invitation, Membership, Role
-from ..xero.models import Entity
+from ..tenancy.models import Workspace as WorkspaceRow
+from ..xero.models import Entity, XeroConnection
+from ..xero.scopes import can_write
 from . import schemas as S
 from .deps import ADMINS, Workspace, WorkspaceContext, require_role
 
@@ -118,28 +121,39 @@ async def revoke_invitation(invitation_id: uuid.UUID, ctx: WorkspaceContext = Ad
 
 
 @router.get("/xero/connect")
-async def connect_xero(ctx: WorkspaceContext = Admin):
+async def connect_xero(write: bool = False, ctx: WorkspaceContext = Admin):
+    """Connect orgs read-only, or (write=true, once changes are on) re-consent with
+    write access. Xero lets the user pick which orgs get the new grant."""
+    scopes = None
+    if write:
+        ws = await ctx.session.get(WorkspaceRow, ctx.workspace_id)
+        if not ws.changes_enabled:
+            raise Conflict("Turn on changes for this workspace before granting write access.",
+                           code="changes_disabled")
+        scopes = get_settings().xero_write_scopes
     url = await auth_service.start_oauth(
         auth_service.CONNECT, user_id=ctx.user_id, workspace_id=ctx.workspace_id,
-        redirect_to=f"/w/{ctx.workspace_id}",
+        redirect_to=f"/w/{ctx.workspace_id}" + ("/settings" if write else ""), scopes=scopes,
     )
     return RedirectResponse(url, status_code=303)
 
 
-def _entity(e: Entity) -> dict:
+def _entity(e: Entity, conn: XeroConnection | None) -> dict:
     return {
         "id": str(e.id), "name": e.name, "tenant_id": e.tenant_id, "status": e.status,
         "sync_status": e.sync_status, "sync_error": e.sync_error,
         "last_synced_at": e.last_synced_at.isoformat() if e.last_synced_at else None,
+        "can_write": bool(conn and conn.status == "active" and can_write(conn.scopes)),
     }
 
 
 @router.get("/entities", response_model=list[S.EntityOut])
 async def entities(ctx: WorkspaceContext = Workspace):
-    rows = await ctx.session.scalars(
-        select(Entity).where(Entity.workspace_id == ctx.workspace_id).order_by(Entity.name)
-    )
-    return [_entity(e) for e in rows]
+    rows = (await ctx.session.execute(
+        select(Entity, XeroConnection).outerjoin(XeroConnection, XeroConnection.id == Entity.connection_id)
+        .where(Entity.workspace_id == ctx.workspace_id).order_by(Entity.name)
+    )).all()
+    return [_entity(e, c) for e, c in rows]
 
 
 @router.post("/entities/{entity_id}/sync", status_code=202, response_model=S.QueuedOut)

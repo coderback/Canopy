@@ -16,5 +16,8 @@ print(len(Base.metadata.tables))
 
 
 def test_worker_process_registers_every_table():
+    import canopy.models  # noqa: F401  (the full registry, as the API sees it)
+    from canopy.core.db import Base
+
     out = subprocess.run([sys.executable, "-c", CHECK], capture_output=True, text=True, check=True)
-    assert int(out.stdout.strip().splitlines()[-1]) == 14
+    assert int(out.stdout.strip().splitlines()[-1]) == len(Base.metadata.tables)

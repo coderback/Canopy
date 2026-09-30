@@ -22,10 +22,13 @@ async def make_user(xero_id: str = "xero-user-1", email: str = "owner@example.co
         return await s.scalar(text("select canopy_upsert_user(:x, :e, 'Test')"), {"x": xero_id, "e": email})
 
 
-async def make_entity(ws: uuid.UUID, user: uuid.UUID, tenant_id: str, name: str, token: dict | None = None) -> uuid.UUID:
+async def make_entity(
+    ws: uuid.UUID, user: uuid.UUID, tenant_id: str, name: str, token: dict | None = None,
+    scopes: str = "accounting.settings.read",
+) -> uuid.UUID:
     async with unit_of_work(workspace_id=ws, user_id=user) as s:
         conn = XeroConnection(
-            workspace_id=ws, xero_user_id=f"xu-{tenant_id}", connected_by=user, scopes="accounting.settings.read",
+            workspace_id=ws, xero_user_id=f"xu-{tenant_id}", connected_by=user, scopes=scopes,
             token_encrypted=encrypt_json(token or token_record({"access_token": "a", "refresh_token": "r", "expires_in": 1800})),
         )
         s.add(conn)

@@ -1,0 +1,411 @@
+"""Change control end to end: settings, separation of duties, preflight, and
+execution against a stateful fake Xero that behaves like the real one on writes
+(unique code AND name incl. archived, status-only archive, idempotency keys)."""
+
+import json
+import uuid
+
+import httpx
+import pytest
+from sqlalchemy import update
+
+from canopy.changes.executor import execute_item
+from canopy.changes.models import ChangeItem
+from canopy.core.config import get_settings
+from canopy.core.db import unit_of_work
+from canopy.sync.service import FULL, sync_entity_accounts
+from canopy.tenancy.models import Membership, Role
+
+from .helpers import client_for, make_entity, make_user, owner_scalar, sign_in
+from .test_connect_and_sync import StaticToken
+
+WRITE = "openid profile email offline_access accounting.settings"
+ACCOUNTS_URL = "/api.xro/2.0/Accounts"
+
+
+def acct(aid, code, name, type_="OVERHEADS", cls="EXPENSE", tax="INPUT2", status="ACTIVE", system=None):
+    a = {"AccountID": aid, "Code": code, "Name": name, "Type": type_, "Class": cls, "TaxType": tax,
+         "Status": status, "UpdatedDateUTC": "/Date(1700000000000+0000)/"}
+    if system:
+        a["SystemAccount"] = system
+    return a
+
+
+TAX_RATES = [
+    {"TaxType": "INPUT2", "Name": "20% (VAT on Expenses)", "Status": "ACTIVE", "CanApplyToExpenses": True,
+     "CanApplyToRevenue": False},
+    {"TaxType": "OUTPUT2", "Name": "20% (VAT on Income)", "Status": "ACTIVE", "CanApplyToRevenue": True,
+     "CanApplyToExpenses": False},
+]
+
+
+class FakeXero(httpx.AsyncBaseTransport):
+    """One org's chart, mutated by writes. `script` queues canned responses per
+    (method, path-prefix) to inject 429s or validation errors."""
+
+    def __init__(self, accounts):
+        self.accounts = {a["AccountID"]: dict(a) for a in accounts}
+        self.requests: list[tuple[str, str, dict, str | None]] = []  # method, path, body, idempotency key
+        self.script: dict[tuple[str, str], list[httpx.Response]] = {}
+
+    def _headers(self):
+        return {"X-MinLimit-Remaining": "55", "X-DayLimit-Remaining": "900", "X-AppMinLimit-Remaining": "9000"}
+
+    def _ok(self, body):
+        return httpx.Response(200, headers=self._headers(), json=body)
+
+    def _invalid(self, message):
+        return httpx.Response(400, headers=self._headers(), json={
+            "ErrorNumber": 10, "Type": "ValidationException", "Message": "A validation exception occurred",
+            "Elements": [{"ValidationErrors": [{"Message": message}]}]})
+
+    async def handle_async_request(self, request):
+        path = request.url.path
+        body = json.loads(request.content) if request.content else {}
+        self.requests.append((request.method, path, body, request.headers.get("Idempotency-Key")))
+        for (method, prefix), queue in self.script.items():
+            if request.method == method and path.startswith(prefix) and queue:
+                return queue.pop(0)
+        if path.endswith("/TaxRates"):
+            return self._ok({"TaxRates": TAX_RATES})
+        if request.method == "GET" and path == ACCOUNTS_URL:
+            return self._ok({"Accounts": list(self.accounts.values())})
+        if request.method == "GET" and path.startswith(ACCOUNTS_URL + "/"):
+            a = self.accounts.get(path.rsplit("/", 1)[1])
+            return self._ok({"Accounts": [a]}) if a else httpx.Response(404, headers=self._headers(), json={})
+        if request.method == "PUT" and path == ACCOUNTS_URL:
+            for a in self.accounts.values():
+                if a["Code"] == body.get("Code"):
+                    return self._invalid("Please enter a unique Code.")
+                if a["Name"].lower() == body.get("Name", "").lower():
+                    return self._invalid("Please enter a unique Name.")
+            new = {"AccountID": str(uuid.uuid4()), "Status": "ACTIVE", "Class": "EXPENSE",
+                   "UpdatedDateUTC": "/Date(1800000000000+0000)/", **body}
+            self.accounts[new["AccountID"]] = new
+            return self._ok({"Accounts": [new]})
+        if request.method == "POST" and path.startswith(ACCOUNTS_URL + "/"):
+            a = self.accounts[path.rsplit("/", 1)[1]]
+            if "Status" in body and len(body) > 1:
+                return self._invalid("You cannot archive an account and update other fields at the same time.")
+            a.update(body)
+            a["UpdatedDateUTC"] = "/Date(1800000000000+0000)/"
+            return self._ok({"Accounts": [a]})
+        return httpx.Response(404, headers=self._headers(), json={})
+
+    def writes(self):
+        return [r for r in self.requests if r[0] in ("PUT", "POST")]
+
+
+ORG_A = [acct("a-200", "200", "Sales", "REVENUE", "REVENUE", "OUTPUT2"), acct("a-489", "489", "Telephone"),
+         acct("a-400", "400", "Advertising")]
+ORG_B = [acct("b-200", "200", "Sales", "REVENUE", "REVENUE", "OUTPUT2"), acct("b-400", "400", "Adverts"),
+         acct("b-610", "610", "Accounts Receivable", "CURRENT", "ASSET", None, system="DEBTORS")]
+
+
+async def _group(c, xero_identity, *, write_b=True, enable=True):
+    me = await sign_in(c, xero_identity)
+    uid = me["user"]["id"]
+    ws = (await c.post("/workspaces", json={"name": "Group"})).json()["id"]
+    a = await make_entity(ws, uid, "tenant-a", "Org A", scopes=WRITE)
+    b = await make_entity(ws, uid, "tenant-b", "Org B", scopes=WRITE if write_b else "accounting.settings.read")
+    fake_a, fake_b = FakeXero(ORG_A), FakeXero(ORG_B)
+    await sync_entity_accounts(ws, a, FULL, transport=fake_a, tokens=StaticToken())
+    await sync_entity_accounts(ws, b, FULL, transport=fake_b, tokens=StaticToken())
+    await c.post(f"/workspaces/{ws}/standard/seed", json={"entity_id": str(a)})
+    if enable:
+        await c.patch(f"/workspaces/{ws}/settings", json={"changes_enabled": True})
+    return ws, uid, a, b, fake_b
+
+
+def _group_id(c_std, code):
+    return next(g["id"] for g in c_std if g["code"] == code)
+
+
+async def _fill_gap(c, ws, b, code="489"):
+    std = (await c.get(f"/workspaces/{ws}/standard")).json()
+    return await c.post(f"/workspaces/{ws}/changes", json={
+        "title": f"Add {code} to Org B", "reason": "close the gap",
+        "items": [{"operation": "create_account", "entity_id": str(b), "group_account_id": _group_id(std, code)}]})
+
+
+async def _second_user(ws, role: Role, xero_id="xero-user-2", email="second@example.com"):
+    uid = await make_user(xero_id, email)
+    async with unit_of_work(workspace_id=ws, user_id=uid) as s:
+        s.add(Membership(workspace_id=uuid.UUID(ws), user_id=uid, role=role))
+    return xero_id, email
+
+
+async def _as(xero_identity, xero_id, email):
+    xero_identity.person = (xero_id, email)
+    c = client_for(xero_identity)
+    await c.__aenter__()
+    await sign_in(c, xero_identity)
+    return c
+
+
+# ---- settings and permissions ---------------------------------------------------------------
+
+
+async def test_changes_are_off_until_the_owner_turns_them_on(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity, enable=False)
+        r = await _fill_gap(c, ws, b)
+        assert r.status_code == 409 and r.json()["error"]["code"] == "changes_disabled"
+        assert (await c.get(f"/workspaces/{ws}/settings")).json()["changes_enabled"] is False
+        on = await c.patch(f"/workspaces/{ws}/settings", json={"changes_enabled": True})
+        assert on.json()["changes_enabled"] is True
+    assert owner_scalar("select count(*) from audit_events where action = 'workspace.settings_changed'") == 1
+
+
+async def test_only_the_owner_changes_settings(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, *_ = await _group(c, xero_identity)
+    admin = await _as(xero_identity, *await _second_user(ws, Role.ADMIN))
+    try:
+        r = await admin.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        assert r.status_code == 403
+    finally:
+        await admin.__aexit__(None, None, None)
+
+
+async def test_authors_cannot_approve_their_own_change_unless_the_owner_allows_it(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        assert (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")).json()["status"] == "submitted"
+        denied = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={})
+        assert denied.status_code == 403 and denied.json()["error"]["code"] == "separation_of_duties"
+
+        await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        ok = (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={"note": "small team"})).json()
+    assert ok["status"] == "approved" and ok["self_approved"] is True
+    assert owner_scalar("select after->>'self_approved' from audit_events where action = 'change.approved'") == "true"
+
+
+async def test_a_different_approver_can_approve_but_a_preparer_cannot(xero_identity, jobs_in_memory):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
+    preparer = await _as(xero_identity, *await _second_user(ws, Role.PREPARER, "xp", "prep@example.com"))
+    approver = await _as(xero_identity, *await _second_user(ws, Role.APPROVER, "xa", "appr@example.com"))
+    try:
+        assert (await preparer.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={})).status_code == 403
+        ok = await approver.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={})
+        assert ok.json()["status"] == "approved" and ok.json()["self_approved"] is False
+    finally:
+        await preparer.__aexit__(None, None, None)
+        await approver.__aexit__(None, None, None)
+    queued = [j for j in jobs_in_memory.jobs.values() if j["task_name"] == "execute_change_item"]
+    assert len(queued) == 1 and queued[0]["lock"] == "tenant:tenant-b"
+
+
+async def test_viewers_cannot_propose_changes(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+    viewer = await _as(xero_identity, *await _second_user(ws, Role.VIEWER, "xv", "view@example.com"))
+    try:
+        assert (await _fill_gap(viewer, ws, b)).status_code == 403
+    finally:
+        await viewer.__aexit__(None, None, None)
+
+
+async def test_rejecting_needs_a_reason(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        cs = (await _fill_gap(c, ws, b)).json()
+        await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
+        assert (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/reject", json={})).status_code == 400
+        r = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/reject", json={"note": "wrong code"})
+    assert r.json()["status"] == "rejected" and r.json()["decision_note"] == "wrong code"
+
+
+# ---- preflight at authoring ---------------------------------------------------------------------
+
+
+async def test_create_defaults_come_from_the_group_account_and_source_tax_type(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        (item,) = (await _fill_gap(c, ws, b)).json()["items"]
+    assert item["payload"] == {"code": "489", "name": "Telephone", "type": "OVERHEADS", "tax_type": "INPUT2"}
+    assert item["preflight_status"] == "ok"
+
+
+async def test_blocked_items_stop_submission_until_fixed(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b, code="400")).json()  # Org B already uses code 400
+        (item,) = cs["items"]
+        assert item["preflight_status"] == "blocked" and "Code 400 is already used" in item["preflight_messages"][0]
+        refused = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
+        assert refused.status_code == 400 and refused.json()["error"]["code"] == "preflight_blocked"
+        # Org B calls its account 'Adverts', so the name 'Advertising' is free: only the code clashed.
+        fixed = await c.patch(f"/workspaces/{ws}/changes/{cs['id']}/items/{item['id']}", json={"payload": {"code": "401"}})
+        assert fixed.json()["items"][0]["preflight_status"] == "ok"
+        submitted = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
+    assert submitted.status_code == 200 and submitted.json()["status"] == "submitted"
+
+
+async def test_orgs_without_write_access_are_blocked(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity, write_b=False)
+        (item,) = (await _fill_gap(c, ws, b)).json()["items"]
+        entities = {e["name"]: e["can_write"] for e in (await c.get(f"/workspaces/{ws}/entities")).json()}
+    assert item["preflight_status"] == "blocked" and "write access" in item["preflight_messages"][0]
+    assert entities == {"Org A": True, "Org B": False}
+
+
+async def test_system_accounts_cannot_be_archived(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        ar = owner_scalar("select id from entity_accounts where code = '610'")
+        cs = (await c.post(f"/workspaces/{ws}/changes", json={"title": "x", "items": [
+            {"operation": "archive_account", "entity_id": str(b), "entity_account_id": str(ar)}]})).json()
+    assert "system account" in cs["items"][0]["preflight_messages"][0]
+
+
+# ---- execution ---------------------------------------------------------------------------------------
+
+
+async def _approved(c, ws, cs_id):
+    await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+    assert (await c.post(f"/workspaces/{ws}/changes/{cs_id}/submit")).status_code == 200
+    assert (await c.post(f"/workspaces/{ws}/changes/{cs_id}/approve", json={})).status_code == 200
+
+
+async def _run(ws, cs, fake):
+    for item in cs["items"]:
+        await execute_item(uuid.UUID(ws), uuid.UUID(item["id"]), transport=fake, tokens=StaticToken())
+
+
+async def test_approved_create_writes_once_with_an_idempotency_key_and_closes_the_gap(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        await _approved(c, ws, cs["id"])
+        before_gaps = (await c.get(f"/workspaces/{ws}/gaps")).json()
+        assert next(r for r in before_gaps["rows"] if r["group_account"]["code"] == "489")["cells"][str(b)]["state"] == "gap"
+
+        await _run(ws, cs, fake)
+        done = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()
+        gaps = (await c.get(f"/workspaces/{ws}/gaps")).json()
+    (item,) = done["items"]
+    assert done["status"] == "completed" and item["status"] == "succeeded"
+    (write,) = fake.writes()
+    assert write[:2] == ("PUT", ACCOUNTS_URL) and write[3] == f"canopy-{item['id']}-1"
+    assert write[2] == {"Code": "489", "Name": "Telephone", "Type": "OVERHEADS", "TaxType": "INPUT2"}
+    assert item["after"]["Code"] == "489" and item["before"] is None
+    assert next(r for r in gaps["rows"] if r["group_account"]["code"] == "489")["cells"][str(b)]["state"] == "mapped"
+    assert owner_scalar("select source from account_mappings m join entity_accounts a on a.id = m.entity_account_id "
+                        "where a.code = '489' and a.entity_id = :b", b=b) == "created"
+    assert owner_scalar("select count(*) from audit_events where action = 'change.item_succeeded'") == 1
+
+
+async def test_a_429_retry_reuses_the_key_and_an_explicit_retry_gets_a_new_one(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        await _approved(c, ws, cs["id"])
+        throttled = httpx.Response(429, headers={"Retry-After": "0", "X-Rate-Limit-Problem": "minute"}, json={})
+        rejected = fake._invalid("Account code is too long for this organisation.")
+        fake.script[("PUT", ACCOUNTS_URL)] = [throttled, rejected]
+        await _run(ws, cs, fake)
+        failed = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()
+        assert failed["status"] == "failed"
+        assert failed["items"][0]["error"] == "Xero rejected the change: Account code is too long for this organisation."
+
+        retried = (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/retry")).json()
+        await _run(ws, retried, fake)
+        done = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()
+    keys = [w[3] for w in fake.writes()]
+    item_id = done["items"][0]["id"]
+    assert keys == [f"canopy-{item_id}-1", f"canopy-{item_id}-1", f"canopy-{item_id}-2"]
+    assert done["status"] == "completed"
+
+
+async def test_data_changed_after_approval_means_no_write(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        await _approved(c, ws, cs["id"])
+        # Someone creates 'Telephone' directly in Xero after the approval.
+        fake.accounts["b-new"] = acct("b-new", "4890", "Telephone")
+        await _run(ws, cs, fake)
+        item = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
+    assert item["status"] == "failed" and item["error"].startswith("Not written") and "already exists" in item["error"]
+    assert fake.writes() == []
+
+
+async def test_rename_then_archive_sends_status_only_and_records_before_after(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        adverts = owner_scalar("select id from entity_accounts where code = '400' and entity_id = :b", b=b)
+        cs = (await c.post(f"/workspaces/{ws}/changes", json={"title": "align", "items": [
+            {"operation": "update_account", "entity_id": str(b), "entity_account_id": str(adverts),
+             "payload": {"name": "Advertising"}}]})).json()
+        await _approved(c, ws, cs["id"])
+        await _run(ws, cs, fake)
+        renamed = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
+        assert renamed["status"] == "succeeded"
+        assert renamed["before"]["Name"] == "Adverts" and renamed["after"]["Name"] == "Advertising"
+
+        cs2 = (await c.post(f"/workspaces/{ws}/changes", json={"title": "archive", "items": [
+            {"operation": "archive_account", "entity_id": str(b), "entity_account_id": str(adverts)}]})).json()
+        await _approved(c, ws, cs2["id"])
+        await _run(ws, cs2, fake)
+    assert fake.writes()[-1][2] == {"Status": "ARCHIVED"}
+    assert owner_scalar("select status from entity_accounts where id = :a", a=adverts) == "ARCHIVED"
+
+
+async def test_the_kill_switch_stops_every_write(xero_identity, monkeypatch):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        await _approved(c, ws, cs["id"])
+        monkeypatch.setattr(get_settings(), "xero_writes_enabled", False)
+        await _run(ws, cs, fake)
+        item = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
+    assert item["status"] == "failed" and "switched off" in item["error"] and fake.writes() == []
+
+
+async def test_an_interrupted_write_is_replayed_with_the_same_key(xero_identity):
+    """The worker died after Xero applied the create but before recording it."""
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        await _approved(c, ws, cs["id"])
+        item_id = cs["items"][0]["id"]
+        fake.accounts["b-489"] = acct("b-489", "489", "Telephone")  # Xero already has it
+        replayed = httpx.Response(200, headers=fake._headers(), json={"Accounts": [fake.accounts["b-489"]]})
+        fake.script[("PUT", ACCOUNTS_URL)] = [replayed]  # Xero's cached response for the same key
+        async with unit_of_work(workspace_id=uuid.UUID(ws)) as s:
+            await s.execute(update(ChangeItem).where(ChangeItem.id == uuid.UUID(item_id)).values(status="running"))
+        await _run(ws, cs, fake)
+        item = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
+    assert item["status"] == "succeeded"
+    assert [w[3] for w in fake.writes()] == [f"canopy-{item_id}-1"]
+
+
+@pytest.mark.parametrize("status", ["draft", "submitted"])
+async def test_cancelled_changes_never_run(xero_identity, status):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        if status == "submitted":
+            await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
+        assert (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/cancel")).json()["status"] == "cancelled"
+        await _run(ws, cs, fake)
+        item = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
+    assert item["status"] == "skipped" and fake.writes() == []
+
+
+async def test_switching_changes_off_after_approval_stops_queued_writes(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, fake = await _group(c, xero_identity)
+        cs = (await _fill_gap(c, ws, b)).json()
+        await _approved(c, ws, cs["id"])
+        await c.patch(f"/workspaces/{ws}/settings", json={"changes_enabled": False})
+        await _run(ws, cs, fake)
+        item = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
+    assert item["status"] == "failed" and "switched off" in item["error"] and fake.writes() == []

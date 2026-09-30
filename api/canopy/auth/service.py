@@ -49,6 +49,7 @@ def _safe_redirect(path: str | None) -> str:
 async def start_oauth(
     purpose: str, *, redirect_to: str | None = None,
     user_id: uuid.UUID | None = None, workspace_id: uuid.UUID | None = None,
+    scopes: str | None = None,
 ) -> str:
     """Create a single-use state row and return Xero's authorize URL."""
     state, nonce = new_token(24), new_token(24)
@@ -58,7 +59,7 @@ async def start_oauth(
             state=state, purpose=purpose, nonce=nonce, code_verifier=verifier, user_id=user_id,
             workspace_id=workspace_id, redirect_to=_safe_redirect(redirect_to), expires_at=utcnow() + STATE_TTL,
         ))
-    scopes = oauth.LOGIN_SCOPES if purpose == LOGIN else get_settings().xero_connect_scopes
+    scopes = scopes or (oauth.LOGIN_SCOPES if purpose == LOGIN else get_settings().xero_connect_scopes)
     return oauth.authorize_url(scopes=scopes, state=state, nonce=nonce, code_challenge=challenge)
 
 

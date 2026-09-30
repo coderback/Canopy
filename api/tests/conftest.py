@@ -23,6 +23,7 @@ os.environ.update(
         # Never reach a real model from tests.
         "AZURE_OPENAI_ENDPOINT": "",
         "OPENAI_API_KEY": "",
+        "XERO_WRITES_ENABLED": "true",
     }
 )
 

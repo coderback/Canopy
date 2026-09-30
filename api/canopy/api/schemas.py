@@ -78,6 +78,7 @@ class EntityOut(BaseModel):
     sync_status: str
     sync_error: str | None
     last_synced_at: str | None
+    can_write: bool
 
 
 class GroupAccountOut(BaseModel):
@@ -100,7 +101,7 @@ class LocalAccountOut(BaseModel):
 class MappingOut(BaseModel):
     id: str
     status: Literal["suggested", "confirmed", "rejected"]
-    source: Literal["exact", "name", "code_conflict", "ai", "manual", "unmatched"]
+    source: Literal["exact", "name", "code_conflict", "ai", "manual", "unmatched", "created"]
     group_account_id: str | None
     confidence: float
     reasoning: str
@@ -154,3 +155,44 @@ class AuditEventOut(BaseModel):
     before: dict | None
     after: dict | None
     at: str
+
+
+class SettingsOut(BaseModel):
+    changes_enabled: bool
+    allow_self_approval: bool
+    writes_enabled_on_server: bool
+
+
+class ChangeItemOut(BaseModel):
+    id: str
+    entity_id: str
+    entity_name: str
+    operation: Literal["create_account", "update_account", "archive_account"]
+    account: LocalAccountOut | None
+    group_account: GroupRef | None
+    payload: dict
+    preflight_status: Literal["ok", "blocked"]
+    preflight_messages: list[str]
+    status: Literal["pending", "running", "succeeded", "failed", "skipped"]
+    attempt: int
+    before: dict | None
+    after: dict | None
+    error: str | None
+    executed_at: str | None
+
+
+class ChangeSetOut(BaseModel):
+    id: str
+    title: str
+    reason: str
+    status: Literal["draft", "submitted", "approved", "rejected", "executing", "completed", "partial", "failed",
+                    "cancelled"]
+    author: UserOut
+    decided_by: UserOut | None
+    decision_note: str | None
+    self_approved: bool
+    created_at: str
+    submitted_at: str | None
+    decided_at: str | None
+    item_counts: dict[str, int]
+    items: list[ChangeItemOut] | None = None
