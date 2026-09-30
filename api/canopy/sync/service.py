@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ..core.db import unit_of_work
@@ -20,7 +20,7 @@ from ..core.models_base import utcnow
 from ..xero.client import XeroClient, parse_xero_date
 from ..xero.models import Entity
 from ..xero.tokens import ConnectionTokens
-from .models import EntityAccount, SyncRun
+from .models import EntityAccount, EntityTaxRate, SyncRun
 
 FULL, INCREMENTAL = "full", "incremental"
 
@@ -80,6 +80,8 @@ async def sync_entity_accounts(
             (tokens or ConnectionTokens(workspace_id, connection_id)).access_token, transport
         )
         accounts = await client.list_accounts(tenant_id, modified_since=since)
+        # Tax rates are few and change rarely: always mirrored in full.
+        tax_rates = await client.list_tax_rates(tenant_id)
     except Exception as exc:
         await _mark_failed(workspace_id, entity_id, run_id, exc)
         raise
@@ -114,6 +116,7 @@ async def sync_entity_accounts(
                 .values(deleted_at=now)
             )
             deleted = result.rowcount or 0
+        await _write_tax_rates(s, workspace_id, entity_id, tax_rates, now)
         entity = await s.get(Entity, entity_id)
         newest = max((r["xero_updated_at"] for r in rows if r["xero_updated_at"]), default=None)
         if newest and (entity.accounts_modified_since is None or newest > entity.accounts_modified_since):
@@ -122,6 +125,55 @@ async def sync_entity_accounts(
         run = await s.get(SyncRun, run_id)
         run.status, run.records_seen, run.finished_at = "ok", len(rows), now
     return SyncResult(entity_id, kind, len(rows), deleted)
+
+
+async def upsert_account(s, workspace_id: uuid.UUID, entity_id: uuid.UUID, xero_account: dict) -> uuid.UUID:
+    """Write one account from a Xero response into the mirror (after a change), so
+    gaps, mappings and the next preflight see it without waiting for a sync."""
+    row = _row(workspace_id, entity_id, xero_account)
+    stmt = insert(EntityAccount).values(**row)
+    return await s.scalar(
+        stmt.on_conflict_do_update(
+            index_elements=[EntityAccount.entity_id, EntityAccount.xero_account_id],
+            set_={c: stmt.excluded[c] for c in row if c not in ("workspace_id", "entity_id", "xero_account_id")},
+        ).returning(EntityAccount.id)
+    )
+
+
+def _tax_row(workspace_id: uuid.UUID, entity_id: uuid.UUID, t: dict, now) -> dict:
+    return {
+        "workspace_id": workspace_id,
+        "entity_id": entity_id,
+        "tax_type": t["TaxType"],
+        "name": t.get("Name") or t["TaxType"],
+        "status": t.get("Status") or "ACTIVE",
+        "effective_rate": t.get("EffectiveRate"),
+        "can_apply_to_revenue": t.get("CanApplyToRevenue"),
+        "can_apply_to_expenses": t.get("CanApplyToExpenses"),
+        "can_apply_to_assets": t.get("CanApplyToAssets"),
+        "can_apply_to_liabilities": t.get("CanApplyToLiabilities"),
+        "can_apply_to_equity": t.get("CanApplyToEquity"),
+        "synced_at": now,
+    }
+
+
+async def _write_tax_rates(s, workspace_id: uuid.UUID, entity_id: uuid.UUID, tax_rates: list[dict], now) -> None:
+    rows = [_tax_row(workspace_id, entity_id, t, now) for t in tax_rates if t.get("TaxType")]
+    if not rows:
+        return  # never wipe the mirror on an empty response
+    stmt = insert(EntityTaxRate).values(rows)
+    await s.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[EntityTaxRate.entity_id, EntityTaxRate.tax_type],
+            set_={c: stmt.excluded[c] for c in rows[0] if c not in ("workspace_id", "entity_id", "tax_type")},
+        )
+    )
+    await s.execute(
+        delete(EntityTaxRate).where(
+            EntityTaxRate.entity_id == entity_id,
+            EntityTaxRate.tax_type.not_in([r["tax_type"] for r in rows]),
+        )
+    )
 
 
 async def mark_entity_failed(workspace_id: uuid.UUID, entity_id: uuid.UUID, exc: Exception) -> None:

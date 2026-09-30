@@ -22,8 +22,14 @@ class Settings(BaseSettings):
     # (Sign Up with Xero, OIDC) and the data connection (accounting scopes).
     xero_client_id: str = ""
     xero_client_secret: str = ""
-    # Milestone 1 is read-only by construction: request no write scopes.
+    # Connections are read-only by default. Write access is requested separately,
+    # per org, only once a workspace owner has turned changes on.
     xero_connect_scopes: str = "openid profile email offline_access accounting.settings.read"
+    xero_write_scopes: str = "openid profile email offline_access accounting.settings"
+
+    # Global kill switch for every write to Xero (operations / incident use).
+    # Unset = on in development only; set explicitly everywhere else.
+    xero_writes_enabled: bool | None = None
 
     # Comma-separated Fernet keys, newest first. MultiFernet encrypts with the first
     # and decrypts with any, so keys can be rotated without re-consenting.
@@ -54,6 +60,12 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def writes_enabled(self) -> bool:
+        if self.xero_writes_enabled is not None:
+            return self.xero_writes_enabled
+        return self.environment == "development"
 
 
 @lru_cache

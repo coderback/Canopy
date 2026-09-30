@@ -12,6 +12,7 @@ Rules:
 """
 
 import asyncio
+import json
 import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -32,12 +33,34 @@ MAX_INLINE_WAIT_SECONDS = 65.0
 AccessToken = Callable[[], Awaitable[str]]
 
 
+def validation_messages(body: str) -> list[str]:
+    """Xero's human-readable reasons from an error body:
+    {"Message": ..., "Elements": [{"ValidationErrors": [{"Message": ...}]}]}."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    messages = [
+        e["Message"]
+        for element in data.get("Elements") or []
+        for e in (element.get("ValidationErrors") or [])
+        if isinstance(e, dict) and e.get("Message")
+    ]
+    if not messages and data.get("Message"):
+        messages = [str(data["Message"])]
+    return messages
+
+
 class XeroApiError(Exception):
     def __init__(self, status_code: int, body: str, path: str):
         self.status_code = status_code
         self.body = body
         self.path = path
-        super().__init__(f"Xero API {status_code} on {path}: {body[:500]}")
+        self.messages = validation_messages(body)
+        detail = "; ".join(self.messages) if self.messages else body[:500]
+        super().__init__(f"Xero API {status_code} on {path}: {detail}")
 
 
 class QuotaExhausted(Exception):
@@ -134,7 +157,11 @@ class XeroClient:
         params: dict | None = None,
         json: dict | None = None,
         modified_since: datetime | None = None,
+        idempotency_key: str | None = None,
     ) -> dict:
+        """`idempotency_key` is sent on every retry of this call, so if an earlier
+        attempt reached Xero, the retry returns Xero's cached response instead of
+        writing twice."""
         last: XeroApiError | None = None
         for attempt in range(1, MAX_ATTEMPTS + 1):
             await _preflight(tenant_id)
@@ -145,10 +172,22 @@ class XeroClient:
             }
             if modified_since:
                 headers["If-Modified-Since"] = modified_since.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S")
-            async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
-                resp = await client.request(
-                    method, f"{BASE_URL}{path}", headers=headers, params=params, json=json
-                )
+            if idempotency_key:
+                headers["Idempotency-Key"] = idempotency_key
+            try:
+                async with httpx.AsyncClient(transport=self._transport, timeout=30.0) as client:
+                    resp = await client.request(
+                        method, f"{BASE_URL}{path}", headers=headers, params=params, json=json
+                    )
+            except httpx.TransportError as exc:
+                # A timeout may mean Xero DID apply a write and the response was lost.
+                # Retrying with the same Idempotency-Key replays Xero's result rather
+                # than writing twice; without a key, only reads are safe to retry.
+                if method != "GET" and not idempotency_key:
+                    raise
+                last = XeroApiError(0, f"{type(exc).__name__}: {exc}", path)
+                await asyncio.sleep(min(2**attempt, 8))
+                continue
             retry_after = float(resp.headers["Retry-After"]) if "Retry-After" in resp.headers else None
             await _record_quota(tenant_id, resp, retry_after if resp.status_code == 429 else None)
             if resp.status_code == 429:
@@ -173,3 +212,31 @@ class XeroClient:
     async def get_organisation(self, tenant_id: str) -> dict:
         data = await self.request(tenant_id, "GET", "/Organisation")
         return (data.get("Organisations") or [{}])[0]
+
+    async def list_tax_rates(self, tenant_id: str) -> list[dict]:
+        return (await self.request(tenant_id, "GET", "/TaxRates")).get("TaxRates", [])
+
+    async def get_account(self, tenant_id: str, account_id: str) -> dict | None:
+        try:
+            data = await self.request(tenant_id, "GET", f"/Accounts/{account_id}")
+        except XeroApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        return (data.get("Accounts") or [None])[0]
+
+    # ---- writes: only ever called by the change executor, after approval ----
+
+    async def create_account(self, tenant_id: str, fields: dict, idempotency_key: str) -> dict:
+        data = await self.request(tenant_id, "PUT", "/Accounts", json=fields, idempotency_key=idempotency_key)
+        return data["Accounts"][0]
+
+    async def update_account(self, tenant_id: str, account_id: str, fields: dict, idempotency_key: str) -> dict:
+        data = await self.request(
+            tenant_id, "POST", f"/Accounts/{account_id}", json=fields, idempotency_key=idempotency_key
+        )
+        return data["Accounts"][0]
+
+    async def archive_account(self, tenant_id: str, account_id: str, idempotency_key: str) -> dict:
+        # Xero rejects an archive combined with any other field change: status only.
+        return await self.update_account(tenant_id, account_id, {"Status": "ARCHIVED"}, idempotency_key)
