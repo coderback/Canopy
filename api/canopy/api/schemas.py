@@ -161,6 +161,8 @@ class SettingsOut(BaseModel):
     changes_enabled: bool
     allow_self_approval: bool
     writes_enabled_on_server: bool
+    # Members who can approve changes. Self-approval only applies while this is 1.
+    approvers: int
 
 
 class ChangeItemOut(BaseModel):
@@ -191,8 +193,16 @@ class ChangeSetOut(BaseModel):
     decided_by: UserOut | None
     decision_note: str | None
     self_approved: bool
+    # Self-approved and not yet reviewed by someone else.
+    needs_review: bool
+    reviewed_by: UserOut | None
+    reviewed_at: str | None
+    review_note: str | None
     created_at: str
     submitted_at: str | None
     decided_at: str | None
     item_counts: dict[str, int]
     items: list[ChangeItemOut] | None = None
+    # Only for the author of a submitted change: why they can't approve it
+    # themselves (None = they can, with a note).
+    self_approval_blocker: str | None = None

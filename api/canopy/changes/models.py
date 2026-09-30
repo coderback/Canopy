@@ -29,7 +29,13 @@ def _in(column: str, values: tuple) -> str:
 
 class ChangeSet(WorkspaceScoped, Base):
     __tablename__ = "change_sets"
-    __table_args__ = (CheckConstraint(_in("status", SET_STATUSES), name="status_valid"),)
+    __table_args__ = (
+        CheckConstraint(_in("status", SET_STATUSES), name="status_valid"),
+        CheckConstraint(
+            "reviewed_at IS NULL OR (self_approved AND reviewed_by IS NOT NULL AND reviewed_by <> author_id)",
+            name="review_needs_self_approval",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -40,12 +46,20 @@ class ChangeSet(WorkspaceScoped, Base):
     decided_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
-    # True when the author approved their own set (only possible if the workspace allows it).
+    # True when the author approved their own set (see service.self_approval_blocker).
     self_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # A self-approved set waits in the review queue until someone else looks at it.
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
     )
+
+    @property
+    def needs_review(self) -> bool:
+        return self.self_approved and self.reviewed_at is None
 
 
 class ChangeItem(WorkspaceScoped, Base):

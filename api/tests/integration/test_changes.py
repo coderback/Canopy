@@ -7,12 +7,13 @@ import uuid
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
 from canopy.changes.executor import execute_item
 from canopy.changes.models import ChangeItem
 from canopy.core.config import get_settings
 from canopy.core.db import unit_of_work
+from canopy.mapping.models import AccountMapping
 from canopy.sync.service import FULL, sync_entity_accounts
 from canopy.tenancy.models import Membership, Role
 
@@ -143,6 +144,29 @@ async def _as(xero_identity, xero_id, email):
     return c
 
 
+async def _other_approver(xero_identity, ws, role=Role.APPROVER):
+    """Signs in a new member who can decide; the caller closes the client."""
+    tag = uuid.uuid4().hex[:8]
+    return await _as(xero_identity, *await _second_user(ws, role, f"x-{tag}", f"{tag}@example.com"))
+
+
+async def _map(ws, entity_id, code, group_code, status="confirmed"):
+    """Maps org account `code` to group account `group_code`."""
+    account = owner_scalar("select id from entity_accounts where entity_id = :e and code = :c", e=entity_id, c=code)
+    group = owner_scalar("select id from group_accounts where workspace_id = :w and code = :c", w=ws, c=group_code)
+    async with unit_of_work(workspace_id=uuid.UUID(ws)) as s:
+        await s.execute(delete(AccountMapping).where(AccountMapping.entity_account_id == account))
+        s.add(AccountMapping(workspace_id=uuid.UUID(ws), entity_id=entity_id, entity_account_id=account,
+                             group_account_id=group, status=status, source="manual", confidence=1.0))
+    return account
+
+
+async def _submitted(c, ws, items, title="x"):
+    cs = (await c.post(f"/workspaces/{ws}/changes", json={"title": title, "items": items})).json()
+    assert (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")).status_code == 200, cs
+    return cs
+
+
 # ---- settings and permissions ---------------------------------------------------------------
 
 
@@ -173,13 +197,126 @@ async def test_authors_cannot_approve_their_own_change_unless_the_owner_allows_i
         ws, _, _, b, _ = await _group(c, xero_identity)
         cs = (await _fill_gap(c, ws, b)).json()
         assert (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")).json()["status"] == "submitted"
-        denied = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={})
+        shown = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()
+        assert shown["self_approval_blocker"] == "Self-approval is off for this workspace."
+        denied = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={"note": "small team"})
         assert denied.status_code == 403 and denied.json()["error"]["code"] == "separation_of_duties"
 
         await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        assert (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["self_approval_blocker"] is None
+        silent = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={"note": "  "})
+        assert silent.status_code == 400 and silent.json()["error"]["code"] == "note_required"
         ok = (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={"note": "small team"})).json()
-    assert ok["status"] == "approved" and ok["self_approved"] is True
+    assert ok["status"] == "approved" and ok["self_approved"] is True and ok["needs_review"] is True
     assert owner_scalar("select after->>'self_approved' from audit_events where action = 'change.approved'") == "true"
+
+
+async def test_self_approval_only_applies_while_nobody_else_can_approve(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        cs = (await _fill_gap(c, ws, b)).json()
+        await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
+        # Members who can't approve don't count.
+        await _second_user(ws, Role.PREPARER, "xp", "prep@example.com")
+        await _second_user(ws, Role.VIEWER, "xv", "view@example.com")
+        assert (await c.get(f"/workspaces/{ws}/settings")).json()["approvers"] == 1
+        assert (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["self_approval_blocker"] is None
+
+        await _second_user(ws, Role.APPROVER, "xa", "appr@example.com")
+        assert (await c.get(f"/workspaces/{ws}/settings")).json()["approvers"] == 2
+        denied = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={"note": "quicker"})
+    assert denied.status_code == 403 and denied.json()["error"]["code"] == "separation_of_duties"
+    assert "1 other person can approve" in denied.json()["error"]["message"]
+
+
+def _item(op, b, account=None, group=None, payload=None):
+    return {"operation": op, "entity_id": str(b), "entity_account_id": account and str(account),
+            "group_account_id": group, "payload": payload}
+
+
+@pytest.mark.parametrize("case, allowed, reason", [
+    ("create from the standard", True, None),
+    ("create with a changed description", False, "details changed from the group standard"),
+    ("create outside the standard", False, "isn't in the group standard"),
+    ("rename to the group name", True, None),
+    ("rename to another name", False, "other than renaming to the group account's name"),
+    ("recode as well as rename", False, "other than renaming to the group account's name"),
+    ("rename an unconfirmed account", False, "isn't confirmed against a group account"),
+    ("archive", False, "archives an account"),
+])
+async def test_self_approval_is_only_for_bringing_an_org_into_line_with_the_standard(
+    xero_identity, case, allowed, reason
+):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        std = (await c.get(f"/workspaces/{ws}/standard")).json()
+        adverts = owner_scalar("select id from entity_accounts where code = '400' and entity_id = :b", b=b)
+        # Org B's 'Adverts' is the group's 400 Advertising: confirmed, or only suggested.
+        await _map(ws, b, "400", "400", "suggested" if case == "rename an unconfirmed account" else "confirmed")
+        item = {
+            "create from the standard": _item("create_account", b, group=_group_id(std, "489")),
+            "create with a changed description":
+                _item("create_account", b, group=_group_id(std, "489"), payload={"description": "mobiles"}),
+            "create outside the standard": _item("create_account", b, payload={
+                "code": "499", "name": "Sundries", "type": "OVERHEADS", "tax_type": "INPUT2"}),
+            "rename to the group name": _item("update_account", b, adverts, payload={"name": "Advertising"}),
+            "rename to another name": _item("update_account", b, adverts, payload={"name": "Marketing"}),
+            "recode as well as rename":
+                _item("update_account", b, adverts, payload={"name": "Advertising", "code": "401"}),
+            "rename an unconfirmed account": _item("update_account", b, adverts, payload={"name": "Advertising"}),
+            "archive": _item("archive_account", b, adverts),
+        }[case]
+        cs = await _submitted(c, ws, [item], title=case)
+        blocker = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["self_approval_blocker"]
+        r = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/approve", json={"note": "only approver"})
+    if allowed:
+        assert blocker is None and r.status_code == 200 and r.json()["self_approved"] is True
+    else:
+        assert reason in blocker and blocker.startswith("The change in Org B")
+        assert r.status_code == 403 and reason in r.json()["error"]["message"]
+
+
+async def test_authors_cancel_rather_than_reject_their_own_change(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        cs = (await _fill_gap(c, ws, b)).json()
+        await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
+        r = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/reject", json={"note": "changed my mind"})
+    assert r.status_code == 409 and "cancel it instead" in r.json()["error"]["message"]
+
+
+async def test_self_approved_changes_wait_for_someone_else_to_review_them(xero_identity):
+    async with client_for(xero_identity) as c:
+        ws, _, _, b, _ = await _group(c, xero_identity)
+        await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+        mine = (await _fill_gap(c, ws, b)).json()
+        await c.post(f"/workspaces/{ws}/changes/{mine['id']}/submit")
+        await c.post(f"/workspaces/{ws}/changes/{mine['id']}/approve", json={"note": "only approver"})
+        queue = (await c.get(f"/workspaces/{ws}/changes", params={"needs_review": True})).json()
+        assert [q["id"] for q in queue] == [mine["id"]]
+        own = await c.post(f"/workspaces/{ws}/changes/{mine['id']}/review", json={})
+        assert own.status_code == 403 and own.json()["error"]["code"] == "separation_of_duties"
+        other = (await _fill_gap(c, ws, b, code="200")).json()  # nobody self-approved this one
+
+    preparer = await _other_approver(xero_identity, ws, Role.PREPARER)
+    approver = await _other_approver(xero_identity, ws)
+    try:
+        assert (await preparer.post(f"/workspaces/{ws}/changes/{mine['id']}/review", json={})).status_code == 403
+        assert (await approver.post(f"/workspaces/{ws}/changes/{other['id']}/review", json={})).status_code == 409
+        done = (await approver.post(f"/workspaces/{ws}/changes/{mine['id']}/review",
+                                    json={"note": "checked against the standard"})).json()
+        again = await approver.post(f"/workspaces/{ws}/changes/{mine['id']}/review", json={})
+        queue = (await approver.get(f"/workspaces/{ws}/changes", params={"needs_review": True})).json()
+    finally:
+        await preparer.__aexit__(None, None, None)
+        await approver.__aexit__(None, None, None)
+    assert done["needs_review"] is False and done["review_note"] == "checked against the standard"
+    assert done["reviewed_by"]["email"] != done["author"]["email"]
+    assert again.status_code == 409 and queue == []
+    assert owner_scalar("select count(*) from audit_events where action = 'change.reviewed'") == 1
 
 
 async def test_a_different_approver_can_approve_but_a_preparer_cannot(xero_identity, jobs_in_memory):
@@ -213,11 +350,14 @@ async def test_viewers_cannot_propose_changes(xero_identity):
 async def test_rejecting_needs_a_reason(xero_identity):
     async with client_for(xero_identity) as c:
         ws, _, _, b, _ = await _group(c, xero_identity)
-        await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
         cs = (await _fill_gap(c, ws, b)).json()
         await c.post(f"/workspaces/{ws}/changes/{cs['id']}/submit")
-        assert (await c.post(f"/workspaces/{ws}/changes/{cs['id']}/reject", json={})).status_code == 400
-        r = await c.post(f"/workspaces/{ws}/changes/{cs['id']}/reject", json={"note": "wrong code"})
+    approver = await _other_approver(xero_identity, ws)
+    try:
+        assert (await approver.post(f"/workspaces/{ws}/changes/{cs['id']}/reject", json={})).status_code == 400
+        r = await approver.post(f"/workspaces/{ws}/changes/{cs['id']}/reject", json={"note": "wrong code"})
+    finally:
+        await approver.__aexit__(None, None, None)
     assert r.json()["status"] == "rejected" and r.json()["decision_note"] == "wrong code"
 
 
@@ -268,10 +408,16 @@ async def test_system_accounts_cannot_be_archived(xero_identity):
 # ---- execution ---------------------------------------------------------------------------------------
 
 
-async def _approved(c, ws, cs_id):
-    await c.patch(f"/workspaces/{ws}/settings", json={"allow_self_approval": True})
+async def _approved(c, xero_identity, ws, cs_id):
+    """Submitted by the author, approved by a second person."""
     assert (await c.post(f"/workspaces/{ws}/changes/{cs_id}/submit")).status_code == 200
-    assert (await c.post(f"/workspaces/{ws}/changes/{cs_id}/approve", json={})).status_code == 200
+    person = xero_identity.person
+    approver = await _other_approver(xero_identity, ws)
+    try:
+        assert (await approver.post(f"/workspaces/{ws}/changes/{cs_id}/approve", json={})).status_code == 200
+    finally:
+        await approver.__aexit__(None, None, None)
+        xero_identity.person = person
 
 
 async def _run(ws, cs, fake):
@@ -283,7 +429,7 @@ async def test_approved_create_writes_once_with_an_idempotency_key_and_closes_th
     async with client_for(xero_identity) as c:
         ws, _, _, b, fake = await _group(c, xero_identity)
         cs = (await _fill_gap(c, ws, b)).json()
-        await _approved(c, ws, cs["id"])
+        await _approved(c, xero_identity, ws, cs["id"])
         before_gaps = (await c.get(f"/workspaces/{ws}/gaps")).json()
         assert next(r for r in before_gaps["rows"] if r["group_account"]["code"] == "489")["cells"][str(b)]["state"] == "gap"
 
@@ -306,7 +452,7 @@ async def test_a_429_retry_reuses_the_key_and_an_explicit_retry_gets_a_new_one(x
     async with client_for(xero_identity) as c:
         ws, _, _, b, fake = await _group(c, xero_identity)
         cs = (await _fill_gap(c, ws, b)).json()
-        await _approved(c, ws, cs["id"])
+        await _approved(c, xero_identity, ws, cs["id"])
         throttled = httpx.Response(429, headers={"Retry-After": "0", "X-Rate-Limit-Problem": "minute"}, json={})
         rejected = fake._invalid("Account code is too long for this organisation.")
         fake.script[("PUT", ACCOUNTS_URL)] = [throttled, rejected]
@@ -328,7 +474,7 @@ async def test_data_changed_after_approval_means_no_write(xero_identity):
     async with client_for(xero_identity) as c:
         ws, _, _, b, fake = await _group(c, xero_identity)
         cs = (await _fill_gap(c, ws, b)).json()
-        await _approved(c, ws, cs["id"])
+        await _approved(c, xero_identity, ws, cs["id"])
         # Someone creates 'Telephone' directly in Xero after the approval.
         fake.accounts["b-new"] = acct("b-new", "4890", "Telephone")
         await _run(ws, cs, fake)
@@ -344,7 +490,7 @@ async def test_rename_then_archive_sends_status_only_and_records_before_after(xe
         cs = (await c.post(f"/workspaces/{ws}/changes", json={"title": "align", "items": [
             {"operation": "update_account", "entity_id": str(b), "entity_account_id": str(adverts),
              "payload": {"name": "Advertising"}}]})).json()
-        await _approved(c, ws, cs["id"])
+        await _approved(c, xero_identity, ws, cs["id"])
         await _run(ws, cs, fake)
         renamed = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
         assert renamed["status"] == "succeeded"
@@ -352,7 +498,7 @@ async def test_rename_then_archive_sends_status_only_and_records_before_after(xe
 
         cs2 = (await c.post(f"/workspaces/{ws}/changes", json={"title": "archive", "items": [
             {"operation": "archive_account", "entity_id": str(b), "entity_account_id": str(adverts)}]})).json()
-        await _approved(c, ws, cs2["id"])
+        await _approved(c, xero_identity, ws, cs2["id"])
         await _run(ws, cs2, fake)
     assert fake.writes()[-1][2] == {"Status": "ARCHIVED"}
     assert owner_scalar("select status from entity_accounts where id = :a", a=adverts) == "ARCHIVED"
@@ -362,7 +508,7 @@ async def test_the_kill_switch_stops_every_write(xero_identity, monkeypatch):
     async with client_for(xero_identity) as c:
         ws, _, _, b, fake = await _group(c, xero_identity)
         cs = (await _fill_gap(c, ws, b)).json()
-        await _approved(c, ws, cs["id"])
+        await _approved(c, xero_identity, ws, cs["id"])
         monkeypatch.setattr(get_settings(), "xero_writes_enabled", False)
         await _run(ws, cs, fake)
         item = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]
@@ -374,7 +520,7 @@ async def test_an_interrupted_write_is_replayed_with_the_same_key(xero_identity)
     async with client_for(xero_identity) as c:
         ws, _, _, b, fake = await _group(c, xero_identity)
         cs = (await _fill_gap(c, ws, b)).json()
-        await _approved(c, ws, cs["id"])
+        await _approved(c, xero_identity, ws, cs["id"])
         item_id = cs["items"][0]["id"]
         fake.accounts["b-489"] = acct("b-489", "489", "Telephone")  # Xero already has it
         replayed = httpx.Response(200, headers=fake._headers(), json={"Accounts": [fake.accounts["b-489"]]})
@@ -404,7 +550,7 @@ async def test_switching_changes_off_after_approval_stops_queued_writes(xero_ide
     async with client_for(xero_identity) as c:
         ws, _, _, b, fake = await _group(c, xero_identity)
         cs = (await _fill_gap(c, ws, b)).json()
-        await _approved(c, ws, cs["id"])
+        await _approved(c, xero_identity, ws, cs["id"])
         await c.patch(f"/workspaces/{ws}/settings", json={"changes_enabled": False})
         await _run(ws, cs, fake)
         item = (await c.get(f"/workspaces/{ws}/changes/{cs['id']}")).json()["items"][0]

@@ -2,22 +2,27 @@
 
 Permissions are enforced here, not in the UI:
 - authors: owner, admin, preparer;  deciders: owner, admin, approver.
-- nobody decides a set they authored, unless the workspace allows self-approval,
-  in which case the approval is recorded as `self_approved` and audited as such.
+- nobody decides a set they authored. The one exception is self-approval, for a
+  group with a single approver, and it is narrow (see `self_approval_blocker`):
+  the workspace allows it, nobody else can approve, every item only brings an org
+  into line with the group standard, and the author says why. Such a set is
+  recorded as `self_approved` and waits in a review queue until someone else
+  reviews it.
 - nothing is authored or approved while the workspace has changes switched off.
 Every transition writes an audit event in the same transaction.
 """
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ..audit import service as audit
 from ..core.errors import AppError, Conflict, Forbidden, NotFound
 from ..core.models_base import utcnow
+from ..mapping.models import AccountMapping
 from ..standard.models import GroupAccount
 from ..sync.models import EntityAccount, EntityTaxRate
-from ..tenancy.models import Role, Workspace
+from ..tenancy.models import Membership, Role, Workspace
 from ..xero.models import Entity, XeroConnection
 from ..xero.scopes import can_write
 from . import preflight as pf
@@ -133,6 +138,13 @@ async def _default_tax_type(s, group: GroupAccount, entity_id: uuid.UUID) -> str
     return None if applies is False else source.tax_type
 
 
+async def _create_defaults(s, group: GroupAccount, entity_id: uuid.UUID) -> dict:
+    """The payload that creates `group` in an org exactly as the standard defines it."""
+    defaults = {"code": group.code, "name": group.name, "type": group.type, "description": group.description,
+                "tax_type": await _default_tax_type(s, group, entity_id)}
+    return {k: v for k, v in defaults.items() if v is not None}
+
+
 async def add_item(s, workspace_id, actor, role, set_id, spec: dict) -> ChangeItem:
     """spec: {operation, entity_id, entity_account_id?, group_account_id?, payload?}.
     For a create from a group account, the payload defaults to the group account's
@@ -154,9 +166,7 @@ async def add_item(s, workspace_id, actor, role, set_id, spec: dict) -> ChangeIt
         group = await s.get(GroupAccount, group_id)
         if group is None:
             raise NotFound("Group account not found.")
-        defaults = {"code": group.code, "name": group.name, "type": group.type, "description": group.description,
-                    "tax_type": await _default_tax_type(s, group, entity.id)}
-        payload = {**{k: v for k, v in defaults.items() if v is not None}, **payload}
+        payload = {**await _create_defaults(s, group, entity.id), **payload}
     if op in (pf.UPDATE, pf.ARCHIVE):
         acct = await s.get(EntityAccount, account_id) if account_id else None
         if acct is None or acct.entity_id != entity.id:
@@ -226,6 +236,61 @@ async def submit(s, workspace_id, actor, role, set_id) -> ChangeSet:
     return cs
 
 
+async def approvers(s, workspace_id, excluding: uuid.UUID | None = None) -> int:
+    """How many members can approve changes, optionally not counting one of them."""
+    query = select(func.count()).select_from(Membership).where(
+        Membership.workspace_id == workspace_id, Membership.role.in_(DECIDERS)
+    )
+    if excluding is not None:
+        query = query.where(Membership.user_id != excluding)
+    return await s.scalar(query)
+
+
+async def _not_standard(s, item: ChangeItem) -> str | None:
+    """Why this item does more than bring its org into line with the group standard,
+    or None when that's all it does. Only such items can be self-approved:
+    - create: a group account, with exactly the details the standard gives it;
+    - update: a rename to the name of the group account it's confirmed against;
+    - never an archive, and never any other edit (codes included)."""
+    if item.operation == pf.ARCHIVE:
+        return "archives an account"
+    if item.operation == pf.CREATE:
+        group = await s.get(GroupAccount, item.group_account_id) if item.group_account_id else None
+        if group is None or group.status != "active":
+            return "creates an account that isn't in the group standard"
+        if item.payload != await _create_defaults(s, group, item.entity_id):
+            return "creates an account with details changed from the group standard"
+        return None
+    mapping = await s.scalar(select(AccountMapping).where(AccountMapping.entity_account_id == item.entity_account_id))
+    group = (
+        await s.get(GroupAccount, mapping.group_account_id)
+        if mapping and mapping.status == "confirmed" and mapping.group_account_id else None
+    )
+    if group is None or group.status != "active":
+        return "edits an account that isn't confirmed against a group account"
+    if item.payload != {"name": group.name}:
+        return "makes an edit other than renaming to the group account's name"
+    return None
+
+
+async def self_approval_blocker(s, ws: Workspace, cs: ChangeSet, role: Role) -> str | None:
+    """Why the author of `cs` can't approve it themselves, or None if they can."""
+    if role not in DECIDERS:
+        return "Your role can't approve changes."
+    if not ws.allow_self_approval:
+        return "Self-approval is off for this workspace."
+    others = await approvers(s, ws.id, excluding=cs.author_id)
+    if others:
+        return f"{others} other {'person' if others == 1 else 'people'} can approve changes here."
+    for item in await items(s, cs.id):
+        reason = await _not_standard(s, item)
+        if reason:
+            entity = await s.get(Entity, item.entity_id)
+            return (f"The change in {entity.name} {reason}; only changes that bring an org into line with "
+                    "the group standard can be self-approved.")
+    return None
+
+
 async def decide(s, workspace_id, actor, role, set_id, approve: bool, note: str | None) -> tuple[ChangeSet, list]:
     """Returns the set and, when approved, the (item, tenant) pairs to execute; the
     caller enqueues them after this transaction commits."""
@@ -234,12 +299,18 @@ async def decide(s, workspace_id, actor, role, set_id, approve: bool, note: str 
     cs = await _set(s, set_id)
     if cs.status != "submitted":
         raise Conflict(f"This change is {cs.status}; only submitted changes can be decided.")
+    note = (note or "").strip() or None
     self_decision = cs.author_id == actor
-    if self_decision and not ws.allow_self_approval:
-        raise Forbidden("You can't approve or reject a change you proposed. Ask another approver.",
-                        code="separation_of_duties")
-    if not approve and not (note or "").strip():
-        raise AppError("Say why you're rejecting it.")
+    if self_decision and not approve:
+        raise Conflict("You proposed this change; cancel it instead of rejecting it.", code="separation_of_duties")
+    if self_decision:
+        blocker = await self_approval_blocker(s, ws, cs, role)
+        if blocker:
+            raise Forbidden(f"You can't approve a change you proposed. {blocker}", code="separation_of_duties")
+        if not note:
+            raise AppError("Say why you're approving your own change; it's kept for review.", code="note_required")
+    if not approve and not note:
+        raise AppError("Say why you're rejecting it.", code="note_required")
     cs.status = "approved" if approve else "rejected"
     cs.decided_by, cs.decided_at, cs.decision_note = actor, utcnow(), note
     cs.self_approved = bool(approve and self_decision)
@@ -247,6 +318,24 @@ async def decide(s, workspace_id, actor, role, set_id, approve: bool, note: str 
                        actor_user_id=actor, target_type="change_set", target_id=cs.id,
                        after={"note": note, "self_approved": cs.self_approved})
     return cs, (await runnable(s, cs.id) if approve else [])
+
+
+async def review(s, workspace_id, actor, role, set_id, note: str | None) -> ChangeSet:
+    """Clears a self-approved set from the review queue. Deliberately not gated on
+    `changes_enabled`: looking back at what was written is always allowed."""
+    _require(role, DECIDERS, "review changes")
+    cs = await _set(s, set_id)
+    if not cs.self_approved:
+        raise Conflict("Only self-approved changes go to review.")
+    if cs.reviewed_at is not None:
+        raise Conflict("This change has already been reviewed.")
+    if cs.author_id == actor:
+        raise Forbidden("Someone other than the author has to review a self-approved change.",
+                        code="separation_of_duties")
+    cs.reviewed_by, cs.reviewed_at, cs.review_note = actor, utcnow(), (note or "").strip() or None
+    await audit.record(s, "change.reviewed", workspace_id=workspace_id, actor_user_id=actor,
+                       target_type="change_set", target_id=cs.id, after={"note": cs.review_note})
+    return cs
 
 
 async def cancel(s, workspace_id, actor, role, set_id) -> ChangeSet:

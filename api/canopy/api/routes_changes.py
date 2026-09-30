@@ -37,9 +37,14 @@ def _settings(ws: WorkspaceRow) -> dict:
             "writes_enabled_on_server": get_settings().writes_enabled}
 
 
+async def _settings_out(ctx: WorkspaceContext, ws: WorkspaceRow) -> dict:
+    # Self-approval only ever applies while a single member can approve.
+    return {**_settings(ws), "approvers": await service.approvers(ctx.session, ctx.workspace_id)}
+
+
 @router.get("/settings", response_model=S.SettingsOut)
 async def get_settings_(ctx: WorkspaceContext = Workspace):
-    return _settings(await ctx.session.get(WorkspaceRow, ctx.workspace_id))
+    return await _settings_out(ctx, await ctx.session.get(WorkspaceRow, ctx.workspace_id))
 
 
 class SettingsChange(BaseModel):
@@ -58,7 +63,7 @@ async def update_settings(body: SettingsChange, ctx: WorkspaceContext = Workspac
     await audit.record(ctx.session, "workspace.settings_changed", workspace_id=ctx.workspace_id,
                        actor_user_id=ctx.user_id, target_type="workspace", target_id=ws.id,
                        before=before, after=_settings(ws))
-    return _settings(ws)
+    return await _settings_out(ctx, ws)
 
 
 # ---- serialisation -------------------------------------------------------------
@@ -89,8 +94,9 @@ async def _item_out(s, item: ChangeItem) -> dict:
     }
 
 
-async def _set_out(s, cs: ChangeSet, with_items: bool) -> dict:
-    users = await _users(s, [cs.author_id, cs.decided_by])
+async def _set_out(ctx: WorkspaceContext, cs: ChangeSet, with_items: bool) -> dict:
+    s = ctx.session
+    users = await _users(s, [cs.author_id, cs.decided_by, cs.reviewed_by])
     counts = dict((await s.execute(
         select(ChangeItem.status, func.count()).where(ChangeItem.change_set_id == cs.id).group_by(ChangeItem.status)
     )).all())
@@ -98,11 +104,17 @@ async def _set_out(s, cs: ChangeSet, with_items: bool) -> dict:
         "id": str(cs.id), "title": cs.title, "reason": cs.reason, "status": cs.status,
         "author": users[cs.author_id], "decided_by": users.get(cs.decided_by),
         "decision_note": cs.decision_note, "self_approved": cs.self_approved,
+        "needs_review": cs.needs_review, "reviewed_by": users.get(cs.reviewed_by),
+        "reviewed_at": _iso(cs.reviewed_at), "review_note": cs.review_note,
         "created_at": _iso(cs.created_at), "submitted_at": _iso(cs.submitted_at), "decided_at": _iso(cs.decided_at),
         "item_counts": counts,
     }
     if with_items:
         out["items"] = [await _item_out(s, i) for i in await service.items(s, cs.id)]
+        # Tells the author, before they try, whether they may approve it themselves.
+        if cs.status == "submitted" and cs.author_id == ctx.user_id:
+            ws = await s.get(WorkspaceRow, ctx.workspace_id)
+            out["self_approval_blocker"] = await service.self_approval_blocker(s, ws, cs, ctx.role)
     return out
 
 
@@ -138,11 +150,12 @@ class NewChange(BaseModel):
 
 
 @router.get("/changes", response_model=list[S.ChangeSetOut])
-async def list_changes(ctx: WorkspaceContext = Workspace):
-    rows = await ctx.session.scalars(
-        select(ChangeSet).where(ChangeSet.workspace_id == ctx.workspace_id).order_by(ChangeSet.created_at.desc())
-    )
-    return [await _set_out(ctx.session, cs, False) for cs in rows]
+async def list_changes(needs_review: bool = False, ctx: WorkspaceContext = Workspace):
+    query = select(ChangeSet).where(ChangeSet.workspace_id == ctx.workspace_id)
+    if needs_review:
+        query = query.where(ChangeSet.self_approved, ChangeSet.reviewed_at.is_(None))
+    rows = await ctx.session.scalars(query.order_by(ChangeSet.created_at.desc()))
+    return [await _set_out(ctx, cs, False) for cs in rows]
 
 
 @router.post("/changes", status_code=201, response_model=S.ChangeSetOut)
@@ -150,18 +163,18 @@ async def create_change(body: NewChange, ctx: WorkspaceContext = Workspace):
     cs = await service.create_set(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, body.title, body.reason)
     for spec in body.items:
         await service.add_item(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, cs.id, spec.model_dump())
-    return await _set_out(ctx.session, cs, True)
+    return await _set_out(ctx, cs, True)
 
 
 @router.get("/changes/{set_id}", response_model=S.ChangeSetOut)
 async def get_change(set_id: uuid.UUID, ctx: WorkspaceContext = Workspace):
-    return await _set_out(ctx.session, await _get(ctx, set_id), True)
+    return await _set_out(ctx, await _get(ctx, set_id), True)
 
 
 @router.post("/changes/{set_id}/items", status_code=201, response_model=S.ChangeSetOut)
 async def add_item(set_id: uuid.UUID, body: ItemSpec, ctx: WorkspaceContext = Workspace):
     await service.add_item(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, set_id, body.model_dump())
-    return await _set_out(ctx.session, await _get(ctx, set_id), True)
+    return await _set_out(ctx, await _get(ctx, set_id), True)
 
 
 class ItemEdit(BaseModel):
@@ -172,20 +185,20 @@ class ItemEdit(BaseModel):
 async def edit_item(set_id: uuid.UUID, item_id: uuid.UUID, body: ItemEdit, ctx: WorkspaceContext = Workspace):
     await _own_item(ctx, set_id, item_id)
     await service.edit_item(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, item_id, body.payload)
-    return await _set_out(ctx.session, await _get(ctx, set_id), True)
+    return await _set_out(ctx, await _get(ctx, set_id), True)
 
 
 @router.delete("/changes/{set_id}/items/{item_id}", response_model=S.ChangeSetOut)
 async def remove_item(set_id: uuid.UUID, item_id: uuid.UUID, ctx: WorkspaceContext = Workspace):
     await _own_item(ctx, set_id, item_id)
     await service.remove_item(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, item_id)
-    return await _set_out(ctx.session, await _get(ctx, set_id), True)
+    return await _set_out(ctx, await _get(ctx, set_id), True)
 
 
 @router.post("/changes/{set_id}/submit", response_model=S.ChangeSetOut)
 async def submit(set_id: uuid.UUID, ctx: WorkspaceContext = Workspace):
     cs = await service.submit(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, set_id)
-    return await _set_out(ctx.session, cs, True)
+    return await _set_out(ctx, cs, True)
 
 
 class ChangeDecision(BaseModel):
@@ -196,23 +209,29 @@ class ChangeDecision(BaseModel):
 async def approve(set_id: uuid.UUID, body: ChangeDecision, tasks: BackgroundTasks, ctx: WorkspaceContext = Workspace):
     cs, runnable = await service.decide(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, set_id, True, body.note)
     tasks.add_task(enqueue_change_items, ctx.workspace_id, runnable)
-    return await _set_out(ctx.session, cs, True)
+    return await _set_out(ctx, cs, True)
 
 
 @router.post("/changes/{set_id}/reject", response_model=S.ChangeSetOut)
 async def reject(set_id: uuid.UUID, body: ChangeDecision, ctx: WorkspaceContext = Workspace):
     cs, _ = await service.decide(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, set_id, False, body.note)
-    return await _set_out(ctx.session, cs, True)
+    return await _set_out(ctx, cs, True)
+
+
+@router.post("/changes/{set_id}/review", response_model=S.ChangeSetOut)
+async def review(set_id: uuid.UUID, body: ChangeDecision, ctx: WorkspaceContext = Workspace):
+    cs = await service.review(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, set_id, body.note)
+    return await _set_out(ctx, cs, True)
 
 
 @router.post("/changes/{set_id}/cancel", response_model=S.ChangeSetOut)
 async def cancel(set_id: uuid.UUID, ctx: WorkspaceContext = Workspace):
     cs = await service.cancel(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, set_id)
-    return await _set_out(ctx.session, cs, True)
+    return await _set_out(ctx, cs, True)
 
 
 @router.post("/changes/{set_id}/retry", response_model=S.ChangeSetOut)
 async def retry(set_id: uuid.UUID, tasks: BackgroundTasks, ctx: WorkspaceContext = Workspace):
     runnable = await service.retry_failed(ctx.session, ctx.workspace_id, ctx.user_id, ctx.role, set_id)
     tasks.add_task(enqueue_change_items, ctx.workspace_id, runnable)
-    return await _set_out(ctx.session, await _get(ctx, set_id), True)
+    return await _set_out(ctx, await _get(ctx, set_id), True)
