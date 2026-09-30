@@ -2,9 +2,10 @@
 
 from .audit.models import AuditEvent  # noqa: F401
 from .auth.models import OAuthState, Session, User  # noqa: F401
+from .changes.models import ChangeItem, ChangeSet  # noqa: F401
 from .mapping.models import AccountMapping  # noqa: F401
 from .standard.models import GroupAccount  # noqa: F401
-from .sync.models import EntityAccount, SyncRun  # noqa: F401
+from .sync.models import EntityAccount, EntityTaxRate, SyncRun  # noqa: F401
 from .tenancy.models import Invitation, Membership, Role, Workspace  # noqa: F401
 from .xero.models import Entity, XeroConnection, XeroQuota  # noqa: F401
 
@@ -19,4 +20,7 @@ WORKSPACE_TABLES = (
     "sync_runs",
     "group_accounts",
     "account_mappings",
+    "entity_tax_rates",
+    "change_sets",
+    "change_items",
 )

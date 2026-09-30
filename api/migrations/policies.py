@@ -20,6 +20,20 @@ WORKSPACE_TABLES = (
 # exists, and holding only hashes, ids, counters or short-lived OAuth state.
 NO_RLS_TABLES = ("sessions", "oauth_states", "xero_quota", "alembic_version")
 
+def workspace_isolation_sql(tables) -> str:
+    """RLS policy + grants for workspace-owned tables (used by later migrations)."""
+    return "".join(
+        f"""
+ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;
+CREATE POLICY workspace_isolation ON {t}
+  USING (workspace_id = canopy_current_workspace())
+  WITH CHECK (workspace_id = canopy_current_workspace());
+GRANT SELECT, INSERT, UPDATE, DELETE ON {t} TO {APP_ROLE};
+"""
+        for t in tables
+    )
+
+
 UPGRADE = f"""
 -- Context helpers: NULL when unset, so policies fail closed.
 CREATE FUNCTION canopy_current_workspace() RETURNS uuid

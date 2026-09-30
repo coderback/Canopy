@@ -15,8 +15,15 @@ def _url() -> str:
     return context.config.get_main_option("sqlalchemy.url") or get_settings().migrations_database_url
 
 
+def include_object(obj, name, type_, reflected, compare_to):
+    """The job queue owns its tables (procrastinate_*); they aren't in our models,
+    so without this autogenerate proposes DROPPING them."""
+    table = name if type_ == "table" else getattr(getattr(obj, "table", None), "name", "")
+    return not (table or "").startswith("procrastinate")
+
+
 def run_offline() -> None:
-    context.configure(url=_url(), target_metadata=target_metadata, literal_binds=True)
+    context.configure(url=_url(), target_metadata=target_metadata, literal_binds=True, include_object=include_object)
     with context.begin_transaction():
         context.run_migrations()
 
@@ -24,7 +31,7 @@ def run_offline() -> None:
 def run_online() -> None:
     engine = create_engine(_url())
     with engine.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(connection=connection, target_metadata=target_metadata, include_object=include_object)
         with context.begin_transaction():
             context.run_migrations()
     engine.dispose()

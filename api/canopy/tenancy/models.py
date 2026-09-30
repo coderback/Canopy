@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..core.db import Base
@@ -29,6 +29,12 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = created_at()
+    # Milestone 2: writing to Xero is opt-in per workspace (owner), and the author of a
+    # change may approve it only if the owner explicitly allows self-approval.
+    changes_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    allow_self_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
 
 class Membership(WorkspaceScoped, Base):
