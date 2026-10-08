@@ -6,6 +6,7 @@ import { api, type GroupAccount, type MappingRow } from "@/lib/api";
 import { useRole } from "@/lib/session";
 import { useData } from "@/lib/use-data";
 import { Badge, Button, Card, ConfidenceBadge, ErrorNote, Loading, PageTitle, Segmented, SourceBadge } from "@/components/ui";
+import { TrackingMapping } from "./tracking-mapping";
 
 type Filter = "review" | "confirmed" | "all";
 
@@ -89,6 +90,8 @@ export default function OrgMapping() {
               "archive_account", r.account.id)} />
         ))}
       </Card>
+      <TrackingMapping ws={ws} entity={entity} orgName={org?.name ?? "This organisation"} isAdmin={isAdmin}
+        canPropose={canPropose} />
     </>
   );
 }

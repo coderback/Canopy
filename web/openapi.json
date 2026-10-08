@@ -210,6 +210,26 @@
               }
             ]
           },
+          "group_tracking_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_tracking_option": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -218,7 +238,13 @@
             "enum": [
               "create_account",
               "update_account",
-              "archive_account"
+              "archive_account",
+              "create_tracking_category",
+              "create_tracking_option",
+              "update_tracking_category",
+              "update_tracking_option",
+              "archive_tracking_category",
+              "archive_tracking_option"
             ],
             "title": "Operation",
             "type": "string"
@@ -253,6 +279,26 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "tracking_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tracking_option": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -916,6 +962,30 @@
             "title": "Entity Id",
             "type": "string"
           },
+          "entity_tracking_category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Tracking Category Id"
+          },
+          "entity_tracking_option_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Tracking Option Id"
+          },
           "group_account_id": {
             "anyOf": [
               {
@@ -928,11 +998,41 @@
             ],
             "title": "Group Account Id"
           },
+          "group_tracking_category_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Tracking Category Id"
+          },
+          "group_tracking_option_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Tracking Option Id"
+          },
           "operation": {
             "enum": [
               "create_account",
               "update_account",
-              "archive_account"
+              "archive_account",
+              "create_tracking_category",
+              "create_tracking_option",
+              "update_tracking_category",
+              "update_tracking_option",
+              "archive_tracking_category",
+              "archive_tracking_option"
             ],
             "title": "Operation",
             "type": "string"
@@ -1143,6 +1243,45 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "NamedRef": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "NamedRef",
+        "type": "object"
+      },
+      "NewCategory": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "NewCategory",
+        "type": "object"
+      },
       "NewChange": {
         "properties": {
           "items": {
@@ -1219,6 +1358,19 @@
           "role"
         ],
         "title": "NewInvitation",
+        "type": "object"
+      },
+      "NewOption": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "NewOption",
         "type": "object"
       },
       "NewWorkspace": {
@@ -1356,6 +1508,414 @@
           "approvers"
         ],
         "title": "SettingsOut",
+        "type": "object"
+      },
+      "StandardChange": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active",
+                  "archived"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "StandardChange",
+        "type": "object"
+      },
+      "TrackingCategoryOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingOptionOut"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "options"
+        ],
+        "title": "TrackingCategoryOut",
+        "type": "object"
+      },
+      "TrackingCategoryRow": {
+        "properties": {
+          "group_category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackingMappingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingOptionRow"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mapping",
+          "group_category",
+          "options"
+        ],
+        "title": "TrackingCategoryRow",
+        "type": "object"
+      },
+      "TrackingDecision": {
+        "properties": {
+          "action": {
+            "enum": [
+              "confirm",
+              "reject",
+              "assign"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "TrackingDecision",
+        "type": "object"
+      },
+      "TrackingGapCategory": {
+        "properties": {
+          "cells": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TrackingGapCell"
+            },
+            "title": "Cells",
+            "type": "object"
+          },
+          "gaps": {
+            "title": "Gaps",
+            "type": "integer"
+          },
+          "group_category": {
+            "$ref": "#/components/schemas/NamedRef"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingGapOption"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "group_category",
+          "cells",
+          "gaps",
+          "options"
+        ],
+        "title": "TrackingGapCategory",
+        "type": "object"
+      },
+      "TrackingGapCell": {
+        "properties": {
+          "entity_category_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Category Id"
+          },
+          "state": {
+            "enum": [
+              "mapped",
+              "pending",
+              "gap",
+              "no_category"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "entity_category_id"
+        ],
+        "title": "TrackingGapCell",
+        "type": "object"
+      },
+      "TrackingGapMatrix": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/TrackingGapCategory"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/EntityRef"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entities",
+          "categories"
+        ],
+        "title": "TrackingGapMatrix",
+        "type": "object"
+      },
+      "TrackingGapOption": {
+        "properties": {
+          "cells": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TrackingGapCell"
+            },
+            "title": "Cells",
+            "type": "object"
+          },
+          "gaps": {
+            "title": "Gaps",
+            "type": "integer"
+          },
+          "group_option": {
+            "$ref": "#/components/schemas/NamedRef"
+          }
+        },
+        "required": [
+          "group_option",
+          "cells",
+          "gaps"
+        ],
+        "title": "TrackingGapOption",
+        "type": "object"
+      },
+      "TrackingMappingOut": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "exact",
+              "manual",
+              "unmatched",
+              "created"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "suggested",
+              "confirmed",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "source",
+          "group_id",
+          "confidence",
+          "reasoning"
+        ],
+        "title": "TrackingMappingOut",
+        "type": "object"
+      },
+      "TrackingOptionOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
+        "title": "TrackingOptionOut",
+        "type": "object"
+      },
+      "TrackingOptionRow": {
+        "properties": {
+          "group_option": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NamedRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mapping": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrackingMappingOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mapping",
+          "group_option"
+        ],
+        "title": "TrackingOptionRow",
+        "type": "object"
+      },
+      "TrackingSeed": {
+        "properties": {
+          "entity_id": {
+            "format": "uuid",
+            "title": "Entity Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_id"
+        ],
+        "title": "TrackingSeed",
+        "type": "object"
+      },
+      "TrackingSeeded": {
+        "properties": {
+          "categories": {
+            "title": "Categories",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "categories"
+        ],
+        "title": "TrackingSeeded",
         "type": "object"
       },
       "UserOut": {
@@ -3542,6 +4102,684 @@
         "summary": "Seed Standard",
         "tags": [
           "workspace"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/entities/{entity_id}": {
+      "get": {
+        "operationId": "entity_tracking_workspaces__workspace_id__tracking_entities__entity_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrackingCategoryRow"
+                  },
+                  "title": "Response Entity Tracking Workspaces  Workspace Id  Tracking Entities  Entity Id  Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Entity Tracking",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/entities/{entity_id}/confirm-exact": {
+      "post": {
+        "operationId": "confirm_exact_workspaces__workspace_id__tracking_entities__entity_id__confirm_exact_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Exact",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/entities/{entity_id}/suggest": {
+      "post": {
+        "operationId": "resuggest_workspaces__workspace_id__tracking_entities__entity_id__suggest_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrackingCategoryRow"
+                  },
+                  "title": "Response Resuggest Workspaces  Workspace Id  Tracking Entities  Entity Id  Suggest Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resuggest",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/gaps": {
+      "get": {
+        "operationId": "gaps_workspaces__workspace_id__tracking_gaps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingGapMatrix"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Gaps",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/mappings/categories/{mapping_id}/decision": {
+      "post": {
+        "operationId": "decide_category_workspaces__workspace_id__tracking_mappings_categories__mapping_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackingDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Category",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/mappings/options/{mapping_id}/decision": {
+      "post": {
+        "operationId": "decide_option_workspaces__workspace_id__tracking_mappings_options__mapping_id__decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mapping_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mapping Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackingDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide Option",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/standard": {
+      "get": {
+        "operationId": "get_standard_workspaces__workspace_id__tracking_standard_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TrackingCategoryOut"
+                  },
+                  "title": "Response Get Standard Workspaces  Workspace Id  Tracking Standard Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Standard",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/standard/categories": {
+      "post": {
+        "operationId": "add_category_workspaces__workspace_id__tracking_standard_categories_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewCategory"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingCategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Category",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/standard/categories/{category_id}": {
+      "patch": {
+        "operationId": "edit_category_workspaces__workspace_id__tracking_standard_categories__category_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Category Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandardChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingCategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Category",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/standard/categories/{category_id}/options": {
+      "post": {
+        "operationId": "add_option_workspaces__workspace_id__tracking_standard_categories__category_id__options_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "category_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Category Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewOption"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingCategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Option",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/standard/options/{option_id}": {
+      "patch": {
+        "operationId": "edit_option_workspaces__workspace_id__tracking_standard_options__option_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "option_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Option Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandardChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingCategoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Option",
+        "tags": [
+          "tracking"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/tracking/standard/seed": {
+      "post": {
+        "operationId": "seed_workspaces__workspace_id__tracking_standard_seed_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackingSeed"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackingSeeded"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Seed",
+        "tags": [
+          "tracking"
         ]
       }
     },

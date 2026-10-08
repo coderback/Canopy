@@ -6,13 +6,8 @@ import { useState } from "react";
 import { api, exportUrl } from "@/lib/api";
 import { useRole } from "@/lib/session";
 import { useData } from "@/lib/use-data";
-import { Button, Card, ErrorNote, Loading, PageTitle, Segmented } from "@/components/ui";
-
-const CELL = {
-  mapped: { cls: "bg-emerald-100 text-emerald-800", label: "✓" },
-  pending: { cls: "bg-amber-100 text-amber-800", label: "?" },
-  gap: { cls: "bg-red-100 text-red-800", label: "✕" },
-} as const;
+import { Button, Card, ErrorNote, GAP_CELL as CELL, Loading, PageTitle, Segmented } from "@/components/ui";
+import { TrackingGaps } from "./tracking-gaps";
 
 export default function GapsPage() {
   const { ws } = useParams<{ ws: string }>();
@@ -59,7 +54,7 @@ export default function GapsPage() {
     <>
       <PageTitle
         title="Gaps"
-        subtitle={`Group accounts with no confirmed mapping in an organisation. ${totalGaps} gap${totalGaps === 1 ? "" : "s"} across ${entities.length} organisations.`}
+        subtitle={`Group accounts and tracking with no confirmed mapping in an organisation. ${totalGaps} gap${totalGaps === 1 ? "" : "s"} across ${entities.length} organisations.`}
         action={<a href={exportUrl(ws)} className="rounded-lg border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-slate-800 hover:bg-surface-sunken">Export mapping (CSV)</a>}
       />
       <ErrorNote message={error ?? gaps.error} />
@@ -119,6 +114,7 @@ export default function GapsPage() {
           </table>
         )}
       </Card>
+      <TrackingGaps ws={ws} only={only} canPropose={canPropose} />
     </>
   );
 }

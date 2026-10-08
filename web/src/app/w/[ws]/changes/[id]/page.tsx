@@ -147,6 +147,19 @@ export default function ChangePage() {
 
 function describe(item: ChangeItem): string {
   const p = item.payload as Record<string, string | undefined>;
+  const category = item.tracking_category?.name ?? "(category)";
+  const option = `${category} / ${item.tracking_option?.name ?? "(option)"}`;
+  switch (item.operation) {
+    case "create_tracking_category": {
+      const options = (item.payload as { options?: string[] }).options ?? [];
+      return `${p.name} · ${options.length ? `options: ${options.join(", ")}` : "no options"}`;
+    }
+    case "create_tracking_option": return `${category} → new option ${p.name}`;
+    case "update_tracking_category": return `${category}: name → ${p.name}`;
+    case "update_tracking_option": return `${option}: name → ${p.name}`;
+    case "archive_tracking_category": return category;
+    case "archive_tracking_option": return option;
+  }
   if (item.operation === "create_account") {
     return `${p.code} ${p.name} · ${p.type}${p.tax_type ? ` · tax ${p.tax_type}` : " · Xero's default tax"}`;
   }
@@ -212,5 +225,8 @@ function Item({ item, editable, onRemove, onEdit }: {
 function pick(a: Record<string, unknown> | null) {
   if (!a) return null;
   const keys = ["Code", "Name", "Type", "TaxType", "Status", "Description"];
-  return Object.fromEntries(keys.filter((k) => a[k] !== undefined).map((k) => [k, a[k]]));
+  const out: Record<string, unknown> = Object.fromEntries(keys.filter((k) => a[k] !== undefined).map((k) => [k, a[k]]));
+  // A tracking category: list its options by name.
+  if (Array.isArray(a.Options)) out.Options = (a.Options as { Name?: string }[]).map((o) => o.Name);
+  return out;
 }

@@ -624,6 +624,210 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/{workspace_id}/tracking/entities/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Entity Tracking */
+        get: operations["entity_tracking_workspaces__workspace_id__tracking_entities__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/entities/{entity_id}/confirm-exact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Exact */
+        post: operations["confirm_exact_workspaces__workspace_id__tracking_entities__entity_id__confirm_exact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/entities/{entity_id}/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resuggest */
+        post: operations["resuggest_workspaces__workspace_id__tracking_entities__entity_id__suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/gaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gaps */
+        get: operations["gaps_workspaces__workspace_id__tracking_gaps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/mappings/categories/{mapping_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Category */
+        post: operations["decide_category_workspaces__workspace_id__tracking_mappings_categories__mapping_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/mappings/options/{mapping_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Option */
+        post: operations["decide_option_workspaces__workspace_id__tracking_mappings_options__mapping_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/standard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Standard */
+        get: operations["get_standard_workspaces__workspace_id__tracking_standard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/standard/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Category */
+        post: operations["add_category_workspaces__workspace_id__tracking_standard_categories_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/standard/categories/{category_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit Category */
+        patch: operations["edit_category_workspaces__workspace_id__tracking_standard_categories__category_id__patch"];
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/standard/categories/{category_id}/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Option */
+        post: operations["add_option_workspaces__workspace_id__tracking_standard_categories__category_id__options_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/standard/options/{option_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit Option */
+        patch: operations["edit_option_workspaces__workspace_id__tracking_standard_options__option_id__patch"];
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/tracking/standard/seed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Seed */
+        post: operations["seed_workspaces__workspace_id__tracking_standard_seed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{workspace_id}/xero/connect": {
         parameters: {
             query?: never;
@@ -709,13 +913,15 @@ export interface components {
             /** Executed At */
             executed_at: string | null;
             group_account: components["schemas"]["GroupRef"] | null;
+            group_tracking_category?: components["schemas"]["NamedRef"] | null;
+            group_tracking_option?: components["schemas"]["NamedRef"] | null;
             /** Id */
             id: string;
             /**
              * Operation
              * @enum {string}
              */
-            operation: "create_account" | "update_account" | "archive_account";
+            operation: "create_account" | "update_account" | "archive_account" | "create_tracking_category" | "create_tracking_option" | "update_tracking_category" | "update_tracking_option" | "archive_tracking_category" | "archive_tracking_option";
             /** Payload */
             payload: {
                 [key: string]: unknown;
@@ -732,6 +938,8 @@ export interface components {
              * @enum {string}
              */
             status: "pending" | "running" | "succeeded" | "failed" | "skipped";
+            tracking_category?: components["schemas"]["NamedRef"] | null;
+            tracking_option?: components["schemas"]["NamedRef"] | null;
         };
         /** ChangeSetOut */
         ChangeSetOut: {
@@ -939,13 +1147,21 @@ export interface components {
              * Format: uuid
              */
             entity_id: string;
+            /** Entity Tracking Category Id */
+            entity_tracking_category_id?: string | null;
+            /** Entity Tracking Option Id */
+            entity_tracking_option_id?: string | null;
             /** Group Account Id */
             group_account_id?: string | null;
+            /** Group Tracking Category Id */
+            group_tracking_category_id?: string | null;
+            /** Group Tracking Option Id */
+            group_tracking_option_id?: string | null;
             /**
              * Operation
              * @enum {string}
              */
-            operation: "create_account" | "update_account" | "archive_account";
+            operation: "create_account" | "update_account" | "archive_account" | "create_tracking_category" | "create_tracking_option" | "update_tracking_category" | "update_tracking_option" | "archive_tracking_category" | "archive_tracking_option";
             /** Payload */
             payload?: {
                 [key: string]: unknown;
@@ -1010,6 +1226,23 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** NamedRef */
+        NamedRef: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** NewCategory */
+        NewCategory: {
+            /** Name */
+            name: string;
+            /**
+             * Options
+             * @default []
+             */
+            options: string[];
+        };
         /** NewChange */
         NewChange: {
             /**
@@ -1044,6 +1277,11 @@ export interface components {
              */
             email: string;
             role: components["schemas"]["Role"];
+        };
+        /** NewOption */
+        NewOption: {
+            /** Name */
+            name: string;
         };
         /** NewWorkspace */
         NewWorkspace: {
@@ -1096,6 +1334,142 @@ export interface components {
             changes_enabled: boolean;
             /** Writes Enabled On Server */
             writes_enabled_on_server: boolean;
+        };
+        /** StandardChange */
+        StandardChange: {
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: ("active" | "archived") | null;
+        };
+        /** TrackingCategoryOut */
+        TrackingCategoryOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Options */
+            options: components["schemas"]["TrackingOptionOut"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "archived";
+        };
+        /** TrackingCategoryRow */
+        TrackingCategoryRow: {
+            group_category: components["schemas"]["NamedRef"] | null;
+            /** Id */
+            id: string;
+            mapping: components["schemas"]["TrackingMappingOut"] | null;
+            /** Name */
+            name: string;
+            /** Options */
+            options: components["schemas"]["TrackingOptionRow"][];
+        };
+        /** TrackingDecision */
+        TrackingDecision: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "confirm" | "reject" | "assign";
+            /** Group Id */
+            group_id?: string | null;
+        };
+        /** TrackingGapCategory */
+        TrackingGapCategory: {
+            /** Cells */
+            cells: {
+                [key: string]: components["schemas"]["TrackingGapCell"];
+            };
+            /** Gaps */
+            gaps: number;
+            group_category: components["schemas"]["NamedRef"];
+            /** Options */
+            options: components["schemas"]["TrackingGapOption"][];
+        };
+        /** TrackingGapCell */
+        TrackingGapCell: {
+            /** Entity Category Id */
+            entity_category_id: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "mapped" | "pending" | "gap" | "no_category";
+        };
+        /** TrackingGapMatrix */
+        TrackingGapMatrix: {
+            /** Categories */
+            categories: components["schemas"]["TrackingGapCategory"][];
+            /** Entities */
+            entities: components["schemas"]["EntityRef"][];
+        };
+        /** TrackingGapOption */
+        TrackingGapOption: {
+            /** Cells */
+            cells: {
+                [key: string]: components["schemas"]["TrackingGapCell"];
+            };
+            /** Gaps */
+            gaps: number;
+            group_option: components["schemas"]["NamedRef"];
+        };
+        /** TrackingMappingOut */
+        TrackingMappingOut: {
+            /** Confidence */
+            confidence: number;
+            /** Group Id */
+            group_id: string | null;
+            /** Id */
+            id: string;
+            /** Reasoning */
+            reasoning: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "exact" | "manual" | "unmatched" | "created";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "suggested" | "confirmed" | "rejected";
+        };
+        /** TrackingOptionOut */
+        TrackingOptionOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "archived";
+        };
+        /** TrackingOptionRow */
+        TrackingOptionRow: {
+            group_option: components["schemas"]["NamedRef"] | null;
+            /** Id */
+            id: string;
+            mapping: components["schemas"]["TrackingMappingOut"] | null;
+            /** Name */
+            name: string;
+        };
+        /** TrackingSeed */
+        TrackingSeed: {
+            /**
+             * Entity Id
+             * Format: uuid
+             */
+            entity_id: string;
+        };
+        /** TrackingSeeded */
+        TrackingSeeded: {
+            /** Categories */
+            categories: number;
         };
         /** UserOut */
         UserOut: {
@@ -2449,6 +2823,414 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CountOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    entity_tracking_workspaces__workspace_id__tracking_entities__entity_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingCategoryRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_exact_workspaces__workspace_id__tracking_entities__entity_id__confirm_exact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resuggest_workspaces__workspace_id__tracking_entities__entity_id__suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingCategoryRow"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gaps_workspaces__workspace_id__tracking_gaps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingGapMatrix"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_category_workspaces__workspace_id__tracking_mappings_categories__mapping_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mapping_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackingDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_option_workspaces__workspace_id__tracking_mappings_options__mapping_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mapping_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackingDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_standard_workspaces__workspace_id__tracking_standard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingCategoryOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_category_workspaces__workspace_id__tracking_standard_categories_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewCategory"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_category_workspaces__workspace_id__tracking_standard_categories__category_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StandardChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_option_workspaces__workspace_id__tracking_standard_categories__category_id__options_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                category_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewOption"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_option_workspaces__workspace_id__tracking_standard_options__option_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                option_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StandardChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingCategoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    seed_workspaces__workspace_id__tracking_standard_seed_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrackingSeed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrackingSeeded"];
                 };
             };
             /** @description Validation Error */

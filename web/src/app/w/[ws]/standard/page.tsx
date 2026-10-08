@@ -6,6 +6,7 @@ import { api, type GroupAccount } from "@/lib/api";
 import { useRole } from "@/lib/session";
 import { useData } from "@/lib/use-data";
 import { Badge, Button, Card, ErrorNote, Loading, PageTitle } from "@/components/ui";
+import { TrackingStandard } from "./tracking-standard";
 
 const TYPES = ["REVENUE", "SALES", "OTHERINCOME", "DIRECTCOSTS", "EXPENSE", "OVERHEADS", "DEPRECIATN", "CURRENT", "FIXED",
   "INVENTORY", "NONCURRENT", "PREPAYMENT", "BANK", "CURRLIAB", "LIABILITY", "TERMLIAB", "EQUITY"];
@@ -31,7 +32,7 @@ export default function StandardPage() {
 
   return (
     <>
-      <PageTitle title="Group standard" subtitle="The chart of accounts every organisation is mapped to. Orgs keep their own codes; Canopy records how each one lines up." />
+      <PageTitle title="Group standard" subtitle="The chart of accounts and tracking categories every organisation is mapped to. Orgs keep their own codes; Canopy records how each one lines up." />
       <ErrorNote message={error ?? standard.error} />
       {rows.length === 0 ? (
         isAdmin ? <Seed ws={ws} run={run} /> : <Card className="p-6 text-sm text-muted">No group standard yet. An admin sets it up.</Card>
@@ -64,6 +65,7 @@ export default function StandardPage() {
           </Card>
         </>
       )}
+      <TrackingStandard ws={ws} isAdmin={isAdmin} />
     </>
   );
 }

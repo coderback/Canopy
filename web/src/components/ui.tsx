@@ -128,11 +128,12 @@ const SOURCE_LABELS: Record<string, string> = {
   ai: "AI suggestion",
   manual: "set by a person",
   unmatched: "no match found",
+  created: "created by Canopy",
 };
 
 export function SourceBadge({ source }: { source: string }) {
   const tone =
-    source === "exact" || source === "manual" ? "emerald"
+    source === "exact" || source === "manual" || source === "created" ? "emerald"
       : source === "code_conflict" || source === "unmatched" ? "amber"
       : "blue";
   return <Badge tone={tone}>{SOURCE_LABELS[source] ?? source}</Badge>;
@@ -177,4 +178,18 @@ export const OPERATION_LABELS: Record<string, string> = {
   create_account: "Create account",
   update_account: "Edit account",
   archive_account: "Archive account",
+  create_tracking_category: "Create tracking category",
+  create_tracking_option: "Add tracking option",
+  update_tracking_category: "Rename tracking category",
+  update_tracking_option: "Rename tracking option",
+  archive_tracking_category: "Archive tracking category",
+  archive_tracking_option: "Archive tracking option",
 };
+
+// Cell states shared by the account and tracking gap matrices.
+export const GAP_CELL = {
+  mapped: { cls: "bg-emerald-100 text-emerald-800", label: "✓" },
+  pending: { cls: "bg-amber-100 text-amber-800", label: "?" },
+  gap: { cls: "bg-red-100 text-red-800", label: "✕" },
+  no_category: { cls: "bg-slate-100 text-slate-400", label: "–" },
+} as const;

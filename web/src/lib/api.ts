@@ -17,6 +17,9 @@ export type Settings = S["SettingsOut"];
 export type ChangeSet = S["ChangeSetOut"];
 export type ChangeItem = S["ChangeItemOut"];
 export type ItemSpec = S["ItemSpec"];
+export type TrackingCategory = S["TrackingCategoryOut"];
+export type TrackingRow = S["TrackingCategoryRow"];
+export type TrackingGaps = S["TrackingGapMatrix"];
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000").replace(/\/$/, "");
 
@@ -97,6 +100,26 @@ export const api = {
     request<S["DecisionOut"]>("POST", `${ws(w)}/mappings/${mappingId}/decision`, body),
 
   gaps: (w: string) => request<GapMatrix>("GET", `${ws(w)}/gaps`),
+
+  trackingStandard: (w: string) => request<TrackingCategory[]>("GET", `${ws(w)}/tracking/standard`),
+  seedTracking: (w: string, entityId: string) =>
+    request<S["TrackingSeeded"]>("POST", `${ws(w)}/tracking/standard/seed`, { entity_id: entityId }),
+  addTrackingCategory: (w: string, name: string, options: string[] = []) =>
+    request<TrackingCategory>("POST", `${ws(w)}/tracking/standard/categories`, { name, options }),
+  editTrackingCategory: (w: string, id: string, body: S["StandardChange"]) =>
+    request<TrackingCategory>("PATCH", `${ws(w)}/tracking/standard/categories/${id}`, body),
+  addTrackingOption: (w: string, categoryId: string, name: string) =>
+    request<TrackingCategory>("POST", `${ws(w)}/tracking/standard/categories/${categoryId}/options`, { name }),
+  editTrackingOption: (w: string, id: string, body: S["StandardChange"]) =>
+    request<TrackingCategory>("PATCH", `${ws(w)}/tracking/standard/options/${id}`, body),
+  entityTracking: (w: string, e: string) => request<TrackingRow[]>("GET", `${ws(w)}/tracking/entities/${e}`),
+  resuggestTracking: (w: string, e: string) =>
+    request<TrackingRow[]>("POST", `${ws(w)}/tracking/entities/${e}/suggest`),
+  confirmExactTracking: (w: string, e: string) =>
+    request<S["ConfirmedOut"]>("POST", `${ws(w)}/tracking/entities/${e}/confirm-exact`),
+  decideTracking: (w: string, kind: "categories" | "options", mappingId: string, body: S["TrackingDecision"]) =>
+    request<S["DecisionOut"]>("POST", `${ws(w)}/tracking/mappings/${kind}/${mappingId}/decision`, body),
+  trackingGaps: (w: string) => request<TrackingGaps>("GET", `${ws(w)}/tracking/gaps`),
 
   members: (w: string) => request<Member[]>("GET", `${ws(w)}/members`),
   changeRole: (w: string, membershipId: string, role: string) =>
