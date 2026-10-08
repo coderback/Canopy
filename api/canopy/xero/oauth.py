@@ -121,6 +121,12 @@ def _jwks_client() -> jwt.PyJWKClient:
     return jwt.PyJWKClient(JWKS_URL, cache_keys=True)
 
 
+# Our clock and Xero's are never exactly in step: a token Xero issued "now" can
+# look a few seconds into the future here (seen live: ~4s), which a zero-tolerance
+# check rejects. A minute is the usual allowance for iat/exp.
+CLOCK_SKEW_SECONDS = 60
+
+
 def verify_id_token(id_token: str, *, nonce: str, signing_key=None) -> Identity:
     """Validate signature, issuer, audience, expiry and nonce; return the person.
     `signing_key` is injectable for tests; production fetches it from Xero's JWKS."""
@@ -132,6 +138,7 @@ def verify_id_token(id_token: str, *, nonce: str, signing_key=None) -> Identity:
         audience=get_settings().xero_client_id,
         issuer=ISSUER,
         options={"require": ["exp", "iat", "aud", "iss"]},
+        leeway=CLOCK_SKEW_SECONDS,
     )
     if claims.get("nonce") != nonce:
         raise jwt.InvalidTokenError("nonce mismatch")

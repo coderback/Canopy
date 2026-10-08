@@ -36,6 +36,26 @@ async def test_state_is_single_use(xero_identity):
     assert replay.status_code == 400 and replay.json()["error"]["code"] == "oauth_state_invalid"
 
 
+async def _callback(c, xero_identity):
+    start = await c.get("/auth/login")
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    xero_identity.nonce = owner_scalar("select nonce from oauth_states where state = :s", s=state)
+    return await c.get("/auth/xero/callback", params={"code": "c", "state": state})
+
+
+async def test_a_few_seconds_of_clock_skew_with_xero_is_tolerated(xero_identity):
+    xero_identity.clock_skew = 5  # Xero ahead of us: its token's iat is "in the future"
+    async with client_for(xero_identity) as c:
+        assert (await _callback(c, xero_identity)).status_code == 303
+
+
+async def test_an_unverifiable_id_token_is_a_clear_sign_in_error_not_a_500(xero_identity):
+    xero_identity.clock_skew = 600
+    async with client_for(xero_identity) as c:
+        r = await _callback(c, xero_identity)
+    assert r.status_code == 400 and r.json()["error"]["code"] == "oauth_token_invalid"
+
+
 async def test_open_redirects_are_refused(xero_identity):
     async with client_for(xero_identity) as c:
         start = await c.get("/auth/login", params={"redirect_to": "//evil.example/steal"})

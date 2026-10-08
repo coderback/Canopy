@@ -58,8 +58,8 @@ def jobs_in_memory():
 SIGNING_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
 
-def id_token(xero_user_id: str, email: str, nonce: str, name: str = "Test User") -> str:
-    now = int(time.time())
+def id_token(xero_user_id: str, email: str, nonce: str, name: str = "Test User", skew: int = 0) -> str:
+    now = int(time.time()) + skew  # skew: how far Xero's clock runs ahead of ours
     return jwt.encode(
         {"iss": oauth.ISSUER, "aud": get_settings().xero_client_id, "iat": now, "exp": now + 300,
          "nonce": nonce, "xero_userid": xero_user_id, "email": email, "name": name},
@@ -82,6 +82,7 @@ class FakeXeroIdentity(httpx.AsyncBaseTransport):
         self.refresh_calls = 0
         self.refresh_fails_with: str | None = None
         self.nonce = ""
+        self.clock_skew = 0  # seconds Xero's clock is ahead of ours
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -96,7 +97,7 @@ class FakeXeroIdentity(httpx.AsyncBaseTransport):
             xero_id, email = self.person
             return httpx.Response(200, json={
                 "access_token": access_token(), "refresh_token": "r-1", "expires_in": 1800,
-                "id_token": id_token(xero_id, email, self.nonce),
+                "id_token": id_token(xero_id, email, self.nonce, skew=self.clock_skew),
                 "scope": "openid profile email offline_access accounting.settings.read",
             })
         if url.startswith(oauth.CONNECTIONS_URL):

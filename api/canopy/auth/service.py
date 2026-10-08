@@ -7,10 +7,12 @@ Two OAuth purposes share one callback, told apart by the stored state row:
   consent granted (filtered by authEventId) -> entities -> queue first sync.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 
+import jwt
 from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert
 
@@ -25,6 +27,8 @@ from ..xero import oauth
 from ..xero.models import Entity, XeroConnection
 from ..xero.tokens import token_record
 from .models import OAuthState, Session
+
+log = logging.getLogger(__name__)
 
 STATE_TTL = timedelta(minutes=10)
 LOGIN, CONNECT = "login", "connect"
@@ -94,7 +98,13 @@ async def handle_callback(
 ) -> CallbackResult:
     st = await _consume_state(state)
     tokens = await identity.exchange_code(code, st.code_verifier)
-    person = oauth.verify_id_token(tokens["id_token"], nonce=st.nonce, signing_key=signing_key)
+    try:
+        person = oauth.verify_id_token(tokens["id_token"], nonce=st.nonce, signing_key=signing_key)
+    except jwt.InvalidTokenError as exc:
+        # A sign-in problem, not a server fault: say so, and log why.
+        log.warning("id_token rejected: %s", exc)
+        raise AppError("Xero's sign-in response couldn't be verified. Please try signing in again.",
+                       code="oauth_token_invalid") from exc
 
     if st.purpose == LOGIN:
         async with unit_of_work() as s:
