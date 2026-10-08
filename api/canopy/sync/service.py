@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from ..core.db import unit_of_work
 from ..core.models_base import utcnow
+from ..tracking.sync import write_tracking
 from ..xero.client import XeroClient, parse_xero_date
 from ..xero.models import Entity
 from ..xero.tokens import ConnectionTokens
@@ -80,8 +81,9 @@ async def sync_entity_accounts(
             (tokens or ConnectionTokens(workspace_id, connection_id)).access_token, transport
         )
         accounts = await client.list_accounts(tenant_id, modified_since=since)
-        # Tax rates are few and change rarely: always mirrored in full.
+        # Tax rates and tracking categories are few: always mirrored in full.
         tax_rates = await client.list_tax_rates(tenant_id)
+        tracking = await client.list_tracking_categories(tenant_id)
     except Exception as exc:
         await _mark_failed(workspace_id, entity_id, run_id, exc)
         raise
@@ -117,6 +119,7 @@ async def sync_entity_accounts(
             )
             deleted = result.rowcount or 0
         await _write_tax_rates(s, workspace_id, entity_id, tax_rates, now)
+        await write_tracking(s, workspace_id, entity_id, tracking, now)
         entity = await s.get(Entity, entity_id)
         newest = max((r["xero_updated_at"] for r in rows if r["xero_updated_at"]), default=None)
         if newest and (entity.accounts_modified_since is None or newest > entity.accounts_modified_since):

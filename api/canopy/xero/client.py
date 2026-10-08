@@ -240,3 +240,43 @@ class XeroClient:
     async def archive_account(self, tenant_id: str, account_id: str, idempotency_key: str) -> dict:
         # Xero rejects an archive combined with any other field change: status only.
         return await self.update_account(tenant_id, account_id, {"Status": "ARCHIVED"}, idempotency_key)
+
+    # ---- tracking categories ----
+
+    async def list_tracking_categories(self, tenant_id: str) -> list[dict]:
+        data = await self.request(tenant_id, "GET", "/TrackingCategories", params={"includeArchived": "true"})
+        return data.get("TrackingCategories", [])
+
+    async def get_tracking_category(self, tenant_id: str, category_id: str) -> dict | None:
+        try:
+            data = await self.request(tenant_id, "GET", f"/TrackingCategories/{category_id}",
+                                      params={"includeArchived": "true"})
+        except XeroApiError as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        return (data.get("TrackingCategories") or [None])[0]
+
+    async def create_tracking_category(self, tenant_id: str, name: str, idempotency_key: str) -> dict:
+        data = await self.request(tenant_id, "PUT", "/TrackingCategories", json={"Name": name},
+                                  idempotency_key=idempotency_key)
+        return data["TrackingCategories"][0]
+
+    async def update_tracking_category(
+        self, tenant_id: str, category_id: str, fields: dict, idempotency_key: str
+    ) -> dict:
+        data = await self.request(tenant_id, "POST", f"/TrackingCategories/{category_id}", json=fields,
+                                  idempotency_key=idempotency_key)
+        return data["TrackingCategories"][0]
+
+    async def create_tracking_option(self, tenant_id: str, category_id: str, name: str, idempotency_key: str) -> dict:
+        data = await self.request(tenant_id, "PUT", f"/TrackingCategories/{category_id}/Options",
+                                  json={"Name": name}, idempotency_key=idempotency_key)
+        return data["Options"][0]
+
+    async def update_tracking_option(
+        self, tenant_id: str, category_id: str, option_id: str, fields: dict, idempotency_key: str
+    ) -> dict:
+        data = await self.request(tenant_id, "POST", f"/TrackingCategories/{category_id}/Options/{option_id}",
+                                  json=fields, idempotency_key=idempotency_key)
+        return data["Options"][0]

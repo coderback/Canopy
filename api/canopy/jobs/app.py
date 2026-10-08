@@ -25,6 +25,7 @@ from ..core.db import unit_of_work
 from ..llm import complete_structured
 from ..mapping.service import generate_suggestions
 from ..sync.service import FULL, INCREMENTAL, mark_entity_failed, sync_entity_accounts
+from ..tracking import service as tracking
 from ..xero.client import QuotaExhausted
 from ..xero.tokens import ConnectionRevoked
 
@@ -83,14 +84,18 @@ async def sync_accounts(workspace_id: str, entity_id: str, tenant_id: str, kind:
     except Exception as exc:
         await mark_entity_failed(ws, ent, exc)
         raise
-    # New or changed accounts get suggestions straight away.
+    # New or changed accounts and tracking get suggestions straight away.
     await enqueue_suggest(ws, ent)
 
 
 @app.task(name="suggest_mappings", queue="mapping")
 async def suggest_mappings(workspace_id: str, entity_id: str, refresh: bool = False) -> None:
+    ws, ent = uuid.UUID(workspace_id), uuid.UUID(entity_id)
     complete = complete_structured if llm_configured() else None
-    await generate_suggestions(uuid.UUID(workspace_id), uuid.UUID(entity_id), complete, refresh=refresh)
+    await generate_suggestions(ws, ent, complete, refresh=refresh)
+    # Tracking: exact-name matching only, so one short transaction.
+    async with unit_of_work(workspace_id=ws) as s:
+        await tracking.generate_suggestions(s, ws, ent, refresh=refresh)
 
 
 async def enqueue_change_items(workspace_id: uuid.UUID, items: list[tuple[uuid.UUID, str]]) -> None:

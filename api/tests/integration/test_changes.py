@@ -40,14 +40,23 @@ TAX_RATES = [
 ]
 
 
-class FakeXero(httpx.AsyncBaseTransport):
-    """One org's chart, mutated by writes. `script` queues canned responses per
-    (method, path-prefix) to inject 429s or validation errors."""
+TRACKING_URL = "/api.xro/2.0/TrackingCategories"
 
-    def __init__(self, accounts):
+
+class FakeXero(httpx.AsyncBaseTransport):
+    """One org's chart and tracking categories, mutated by writes. `script` queues
+    canned responses per (method, path-prefix) to inject 429s or validation errors.
+    Tracking writes behave like Xero's: two active categories at most, names
+    unique (archived included), and a repeated Idempotency-Key replays the first
+    response instead of writing again."""
+
+    def __init__(self, accounts, tracking=None):
         self.accounts = {a["AccountID"]: dict(a) for a in accounts}
+        self.tracking = [json.loads(json.dumps(c)) for c in tracking or []]
         self.requests: list[tuple[str, str, dict, str | None]] = []  # method, path, body, idempotency key
         self.script: dict[tuple[str, str], list[httpx.Response]] = {}
+        self.replies: dict[str, httpx.Response] = {}  # Idempotency-Key -> first tracking response
+        self.reject_options: dict[str, str] = {}  # option name -> validation message, used once
 
     def _headers(self):
         return {"X-MinLimit-Remaining": "55", "X-DayLimit-Remaining": "900", "X-AppMinLimit-Remaining": "9000"}
@@ -91,6 +100,48 @@ class FakeXero(httpx.AsyncBaseTransport):
             a.update(body)
             a["UpdatedDateUTC"] = "/Date(1800000000000+0000)/"
             return self._ok({"Accounts": [a]})
+        if path.startswith(TRACKING_URL):
+            key = request.headers.get("Idempotency-Key")
+            if key and key in self.replies:
+                return self.replies[key]
+            response = self._tracking(request.method, path[len(TRACKING_URL):].strip("/").split("/"), body)
+            if key and request.method in ("PUT", "POST"):
+                self.replies[key] = response
+            return response
+        return httpx.Response(404, headers=self._headers(), json={})
+
+    def _tracking(self, method, parts, body):
+        parts = [p for p in parts if p]
+        if method == "GET" and not parts:
+            return self._ok({"TrackingCategories": json.loads(json.dumps(self.tracking))})
+        category = next((c for c in self.tracking if parts and c["TrackingCategoryID"] == parts[0]), None)
+        if parts and category is None:
+            return httpx.Response(404, headers=self._headers(), json={})
+        if method == "GET":
+            return self._ok({"TrackingCategories": [category]})
+        if method == "PUT" and not parts:
+            if sum(c["Status"] == "ACTIVE" for c in self.tracking) >= 2:
+                return self._invalid("You can only have 2 active tracking categories.")
+            if any(c["Name"].lower() == body["Name"].lower() for c in self.tracking):
+                return self._invalid("The tracking category name must be unique.")
+            new = {"TrackingCategoryID": str(uuid.uuid4()), "Name": body["Name"], "Status": "ACTIVE", "Options": []}
+            self.tracking.append(new)
+            return self._ok({"TrackingCategories": [new]})
+        if method == "POST" and len(parts) == 1:
+            category.update(body)
+            return self._ok({"TrackingCategories": [category]})
+        if method == "PUT" and parts[1:] == ["Options"]:
+            if body["Name"] in self.reject_options:
+                return self._invalid(self.reject_options.pop(body["Name"]))
+            if any(o["Name"].lower() == body["Name"].lower() for o in category["Options"]):
+                return self._invalid("The tracking option name must be unique.")
+            new = {"TrackingOptionID": str(uuid.uuid4()), "Name": body["Name"], "Status": "ACTIVE"}
+            category["Options"].append(new)
+            return self._ok({"Options": [new]})
+        if method == "POST" and len(parts) == 3:
+            option = next(o for o in category["Options"] if o["TrackingOptionID"] == parts[2])
+            option.update(body)
+            return self._ok({"Options": [option]})
         return httpx.Response(404, headers=self._headers(), json={})
 
     def writes(self):

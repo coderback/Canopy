@@ -7,6 +7,14 @@ from .mapping.models import AccountMapping  # noqa: F401
 from .standard.models import GroupAccount  # noqa: F401
 from .sync.models import EntityAccount, EntityTaxRate, SyncRun  # noqa: F401
 from .tenancy.models import Invitation, Membership, Role, Workspace  # noqa: F401
+from .tracking.models import (  # noqa: F401
+    EntityTrackingCategory,
+    EntityTrackingOption,
+    GroupTrackingCategory,
+    GroupTrackingOption,
+    TrackingCategoryMapping,
+    TrackingOptionMapping,
+)
 from .xero.models import Entity, XeroConnection, XeroQuota  # noqa: F401
 
 # Tables whose rows belong to exactly one workspace: RLS policy
@@ -23,4 +31,10 @@ WORKSPACE_TABLES = (
     "entity_tax_rates",
     "change_sets",
     "change_items",
+    "group_tracking_categories",
+    "group_tracking_options",
+    "entity_tracking_categories",
+    "entity_tracking_options",
+    "tracking_category_mappings",
+    "tracking_option_mappings",
 )

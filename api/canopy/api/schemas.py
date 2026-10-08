@@ -146,6 +146,77 @@ class GapMatrix(BaseModel):
     rows: list[GapRow]
 
 
+class TrackingOptionOut(BaseModel):
+    id: str
+    name: str
+    status: Literal["active", "archived"]
+
+
+class TrackingCategoryOut(BaseModel):
+    id: str
+    name: str
+    status: Literal["active", "archived"]
+    options: list[TrackingOptionOut]
+
+
+class TrackingSeeded(BaseModel):
+    categories: int
+
+
+class TrackingMappingOut(BaseModel):
+    id: str
+    status: Literal["suggested", "confirmed", "rejected"]
+    source: Literal["exact", "manual", "unmatched", "created"]
+    group_id: str | None
+    confidence: float
+    reasoning: str
+
+
+class NamedRef(BaseModel):
+    id: str
+    name: str
+
+
+class TrackingOptionRow(BaseModel):
+    id: str
+    name: str
+    mapping: TrackingMappingOut | None
+    group_option: NamedRef | None
+
+
+class TrackingCategoryRow(BaseModel):
+    id: str
+    name: str
+    mapping: TrackingMappingOut | None
+    group_category: NamedRef | None
+    options: list[TrackingOptionRow]
+
+
+class TrackingGapCell(BaseModel):
+    # no_category: the org lacks the category itself, so the option can't be added yet.
+    state: Literal["mapped", "pending", "gap", "no_category"]
+    # Where a missing option would be added (the org category confirmed against the group's).
+    entity_category_id: str | None
+
+
+class TrackingGapOption(BaseModel):
+    group_option: NamedRef
+    cells: dict[str, TrackingGapCell]
+    gaps: int
+
+
+class TrackingGapCategory(BaseModel):
+    group_category: NamedRef
+    cells: dict[str, TrackingGapCell]
+    gaps: int
+    options: list[TrackingGapOption]
+
+
+class TrackingGapMatrix(BaseModel):
+    entities: list[EntityRef]
+    categories: list[TrackingGapCategory]
+
+
 class AuditEventOut(BaseModel):
     id: int
     action: str
@@ -169,9 +240,18 @@ class ChangeItemOut(BaseModel):
     id: str
     entity_id: str
     entity_name: str
-    operation: Literal["create_account", "update_account", "archive_account"]
+    operation: Literal[
+        "create_account", "update_account", "archive_account", "create_tracking_category",
+        "create_tracking_option", "update_tracking_category", "update_tracking_option",
+        "archive_tracking_category", "archive_tracking_option",
+    ]
     account: LocalAccountOut | None
     group_account: GroupRef | None
+    # Tracking items: the org's category/option and the group's they align with.
+    tracking_category: NamedRef | None = None
+    tracking_option: NamedRef | None = None
+    group_tracking_category: NamedRef | None = None
+    group_tracking_option: NamedRef | None = None
     payload: dict
     preflight_status: Literal["ok", "blocked"]
     preflight_messages: list[str]
