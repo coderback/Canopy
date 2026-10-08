@@ -22,6 +22,12 @@ from ..standard.models import GroupAccount
 from ..sync.models import EntityAccount
 from ..tenancy.models import Role
 from ..tenancy.models import Workspace as WorkspaceRow
+from ..tracking.models import (
+    EntityTrackingCategory,
+    EntityTrackingOption,
+    GroupTrackingCategory,
+    GroupTrackingOption,
+)
 from ..xero.models import Entity
 from . import schemas as S
 from .deps import Workspace, WorkspaceContext
@@ -83,6 +89,11 @@ async def _item_out(s, item: ChangeItem) -> dict:
     entity = await s.get(Entity, item.entity_id)
     acct = await s.get(EntityAccount, item.entity_account_id) if item.entity_account_id else None
     group = await s.get(GroupAccount, item.group_account_id) if item.group_account_id else None
+
+    async def named(model, row_id):
+        row = await s.get(model, row_id) if row_id else None
+        return {"id": str(row.id), "name": row.name} if row else None
+
     return {
         "id": str(item.id), "entity_id": str(item.entity_id), "entity_name": entity.name if entity else "",
         "operation": item.operation,
@@ -91,6 +102,10 @@ async def _item_out(s, item: ChangeItem) -> dict:
         "payload": item.payload, "preflight_status": item.preflight_status,
         "preflight_messages": item.preflight_messages, "status": item.status, "attempt": item.attempt,
         "before": item.before, "after": item.after, "error": item.error, "executed_at": _iso(item.executed_at),
+        "tracking_category": await named(EntityTrackingCategory, item.entity_tracking_category_id),
+        "tracking_option": await named(EntityTrackingOption, item.entity_tracking_option_id),
+        "group_tracking_category": await named(GroupTrackingCategory, item.group_tracking_category_id),
+        "group_tracking_option": await named(GroupTrackingOption, item.group_tracking_option_id),
     }
 
 
@@ -136,10 +151,18 @@ async def _own_item(ctx: WorkspaceContext, set_id: uuid.UUID, item_id: uuid.UUID
 
 
 class ItemSpec(BaseModel):
-    operation: Literal["create_account", "update_account", "archive_account"]
+    operation: Literal[
+        "create_account", "update_account", "archive_account", "create_tracking_category",
+        "create_tracking_option", "update_tracking_category", "update_tracking_option",
+        "archive_tracking_category", "archive_tracking_option",
+    ]
     entity_id: uuid.UUID
     entity_account_id: uuid.UUID | None = None
     group_account_id: uuid.UUID | None = None
+    entity_tracking_category_id: uuid.UUID | None = None
+    entity_tracking_option_id: uuid.UUID | None = None
+    group_tracking_category_id: uuid.UUID | None = None
+    group_tracking_option_id: uuid.UUID | None = None
     payload: dict | None = None
 
 

@@ -3,8 +3,8 @@
 Order matters, and every step is a gate:
 1. the item and its set must still be runnable (approved/executing, not already done);
 2. the workspace must still have changes on, and the global kill switch must allow writes;
-3. the org's mirror is refreshed (incremental sync, incl. tax rates);
-4. for edits/archives the live account is read from Xero -> `before`;
+3. the org's mirror is refreshed (incremental sync, incl. tax rates and tracking);
+4. for edits/archives the live object is read from Xero -> `before`;
 5. preflight runs again against that fresh data -> any problem fails the item
    WITHOUT writing;
 6. the write carries the item's Idempotency-Key (stable across automatic retries,
@@ -12,16 +12,15 @@ Order matters, and every step is a gate:
 7. the mirror, the mapping (a created account is confirmed against its group
    account, closing the gap) and the audit log are updated, and the set's status is
    rolled up under a row lock so parallel items across tenants can't race.
-The Xero calls happen outside any open transaction.
+The Xero calls happen outside any open transaction. Tracking items share steps
+1-2 here and run the rest in tracking_executor.py.
 """
 
 import uuid
 
 import httpx
-from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
-from ..audit import service as audit
 from ..core.config import get_settings
 from ..core.db import unit_of_work
 from ..core.models_base import utcnow
@@ -29,12 +28,15 @@ from ..mapping.models import AccountMapping
 from ..sync.models import EntityAccount
 from ..sync.service import INCREMENTAL, sync_entity_accounts, upsert_account
 from ..tenancy.models import Workspace
+from ..tracking import preflight as tp
 from ..xero.client import QuotaExhausted, XeroApiError, XeroClient
 from ..xero.models import Entity
 from ..xero.tokens import ConnectionTokens
 from . import preflight as pf
 from .models import ChangeItem, ChangeSet
-from .service import org_state, roll_up
+from .outcome import finish as _finish
+from .outcome import reset as _reset
+from .service import org_state
 
 RUNNABLE_SETS = ("approved", "executing")
 
@@ -45,32 +47,6 @@ def _live(account: dict) -> pf.OrgAccount:
         account.get("Class"), account.get("Status") or "ACTIVE", account.get("SystemAccount"),
         account.get("TaxType"), account.get("Description"),
     )
-
-
-async def _finish(workspace_id, item_id, *, status: str, error: str | None = None, before=None, after=None,
-                  xero_account_id: str | None = None, actor=None) -> None:
-    async with unit_of_work(workspace_id=workspace_id) as s:
-        item = await s.get(ChangeItem, item_id)
-        item.status, item.error, item.executed_at = status, error, utcnow()
-        if before is not None:
-            item.before = before
-        if after is not None:
-            item.after, item.xero_account_id = after, xero_account_id
-        await audit.record(
-            s, f"change.item_{status}", workspace_id=workspace_id, actor_user_id=actor,
-            target_type="change_item", target_id=item.id, before=before,
-            after=after if status == "succeeded" else {"error": error},
-        )
-        # Serialise the roll-up: items for different tenants run in parallel.
-        cs = (await s.execute(
-            select(ChangeSet).where(ChangeSet.id == item.change_set_id).with_for_update()
-        )).scalar_one()
-        statuses = list(await s.scalars(select(ChangeItem.status).where(ChangeItem.change_set_id == cs.id)))
-        final = roll_up(statuses)
-        if final and cs.status != final:
-            cs.status = final
-            await audit.record(s, f"change.{final}", workspace_id=workspace_id, actor_user_id=None,
-                               target_type="change_set", target_id=cs.id)
 
 
 async def execute_item(
@@ -115,6 +91,12 @@ async def execute_item(
         return "failed"
 
     tokens = tokens or ConnectionTokens(workspace_id, connection_id)
+    if op in tp.OPERATIONS:
+        from .tracking_executor import execute_tracking
+
+        return await execute_tracking(workspace_id, item_id, transport=transport, tokens=tokens, actor=actor,
+                                      replay=replay)
+
     client = XeroClient(tokens.access_token, transport)
     try:
         # Fresh mirror first, so the second preflight sees what Xero sees now.
@@ -173,9 +155,3 @@ async def execute_item(
     await _finish(workspace_id, item_id, status="succeeded", before=before, after=after,
                   xero_account_id=after.get("AccountID"), actor=actor)
     return "succeeded"
-
-
-async def _reset(workspace_id, item_id) -> None:
-    async with unit_of_work(workspace_id=workspace_id) as s:
-        item = await s.get(ChangeItem, item_id)
-        item.status = "pending"

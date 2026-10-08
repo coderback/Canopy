@@ -19,7 +19,12 @@ from ..core.models_base import WorkspaceScoped, created_at, utcnow, uuid_pk
 SET_STATUSES = (
     "draft", "submitted", "approved", "rejected", "executing", "completed", "partial", "failed", "cancelled",
 )
-OPERATIONS = ("create_account", "update_account", "archive_account")
+ACCOUNT_OPERATIONS = ("create_account", "update_account", "archive_account")
+TRACKING_OPERATIONS = (
+    "create_tracking_category", "create_tracking_option", "update_tracking_category", "update_tracking_option",
+    "archive_tracking_category", "archive_tracking_option",
+)
+OPERATIONS = ACCOUNT_OPERATIONS + TRACKING_OPERATIONS
 ITEM_STATUSES = ("pending", "running", "succeeded", "failed", "skipped")
 
 
@@ -66,8 +71,9 @@ class ChangeItem(WorkspaceScoped, Base):
     """One operation in one org.
 
     payload: desired fields — create: {code, name, type, tax_type?, description?};
-    update: only the fields that change; archive: {}.
-    before/after: the live Xero account read just before the write, and Xero's response."""
+    update: only the fields that change; archive: {}. Tracking: create category
+    {name, options: [names]}; create option and renames {name}; archives {}.
+    before/after: the live Xero object read just before the write, and Xero's response."""
 
     __tablename__ = "change_items"
     __table_args__ = (
@@ -90,6 +96,24 @@ class ChangeItem(WorkspaceScoped, Base):
     group_account_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("group_accounts.id", ondelete="SET NULL")
     )
+    # Tracking targets: the org's category (renames, archives, new options) or
+    # option, and the group category/option the item brings the org in line with.
+    entity_tracking_category_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("entity_tracking_categories.id", ondelete="SET NULL")
+    )
+    entity_tracking_option_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("entity_tracking_options.id", ondelete="SET NULL")
+    )
+    group_tracking_category_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("group_tracking_categories.id", ondelete="SET NULL")
+    )
+    group_tracking_option_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("group_tracking_options.id", ondelete="SET NULL")
+    )
+    # A create that writes in several steps (a category, then its options) records
+    # the category's Xero id after the first step, so a retry resumes instead of
+    # creating it twice.
+    created_xero_id: Mapped[str | None] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     preflight_status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")
     preflight_messages: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

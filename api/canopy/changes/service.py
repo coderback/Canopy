@@ -23,6 +23,8 @@ from ..mapping.models import AccountMapping
 from ..standard.models import GroupAccount
 from ..sync.models import EntityAccount, EntityTaxRate
 from ..tenancy.models import Membership, Role, Workspace
+from ..tracking import changes as tracking_changes
+from ..tracking import preflight as tp
 from ..xero.models import Entity, XeroConnection
 from ..xero.scopes import can_write
 from . import preflight as pf
@@ -67,6 +69,8 @@ async def run_preflight(s, item: ChangeItem) -> list[str]:
     entity = await s.get(Entity, item.entity_id)
     if entity is None or entity.status != "active":
         return ["That organisation is no longer connected."]
+    if item.operation in tp.OPERATIONS:
+        return await tracking_changes.run_preflight(s, item, entity)
     target = await s.get(EntityAccount, item.entity_account_id) if item.entity_account_id else None
     if target is not None and target.deleted_at is not None:
         target = None
@@ -146,18 +150,24 @@ async def _create_defaults(s, group: GroupAccount, entity_id: uuid.UUID) -> dict
 
 
 async def add_item(s, workspace_id, actor, role, set_id, spec: dict) -> ChangeItem:
-    """spec: {operation, entity_id, entity_account_id?, group_account_id?, payload?}.
-    For a create from a group account, the payload defaults to the group account's
-    code/name/type/description and the source org's tax type where valid."""
+    """spec: {operation, entity_id, payload?, plus the target ids the operation
+    needs (entity_account_id / group_account_id for accounts; entity_tracking_*
+    / group_tracking_* for tracking)}. For a create from the group standard, the
+    payload defaults to what the standard defines (for an account, also the
+    source org's tax type where valid)."""
     await _workspace(s, workspace_id)
     cs = await _set(s, set_id)
     _editable(cs, actor, role)
     op = spec["operation"]
-    if op not in (pf.CREATE, pf.UPDATE, pf.ARCHIVE):
+    if op not in (pf.CREATE, pf.UPDATE, pf.ARCHIVE, *tp.OPERATIONS):
         raise AppError(f"Unknown operation {op!r}.")
     entity = await s.get(Entity, spec["entity_id"])
     if entity is None:
         raise NotFound("Organisation not found.")
+    if op in tp.OPERATIONS:
+        fields = await tracking_changes.prepare(s, entity, op, spec)
+        return await _added(s, ChangeItem(workspace_id=workspace_id, change_set_id=cs.id, entity_id=entity.id,
+                                          operation=op, **fields))
     payload = dict(spec.get("payload") or {})
     group_id = spec.get("group_account_id")
     account_id = spec.get("entity_account_id")
@@ -174,8 +184,12 @@ async def add_item(s, workspace_id, actor, role, set_id, spec: dict) -> ChangeIt
     if op == pf.ARCHIVE:
         payload = {}
 
-    item = ChangeItem(workspace_id=workspace_id, change_set_id=cs.id, entity_id=entity.id, operation=op,
-                      entity_account_id=account_id, group_account_id=group_id, payload=payload)
+    return await _added(s, ChangeItem(workspace_id=workspace_id, change_set_id=cs.id, entity_id=entity.id,
+                                      operation=op, entity_account_id=account_id, group_account_id=group_id,
+                                      payload=payload))
+
+
+async def _added(s, item: ChangeItem) -> ChangeItem:
     s.add(item)
     await s.flush()
     problems = await run_preflight(s, item)
@@ -251,7 +265,10 @@ async def _not_standard(s, item: ChangeItem) -> str | None:
     or None when that's all it does. Only such items can be self-approved:
     - create: a group account, with exactly the details the standard gives it;
     - update: a rename to the name of the group account it's confirmed against;
-    - never an archive, and never any other edit (codes included)."""
+    - never an archive, and never any other edit (codes included).
+    Tracking items follow the same idea (tracking/changes.py)."""
+    if item.operation in tp.OPERATIONS:
+        return await tracking_changes.not_standard(s, item)
     if item.operation == pf.ARCHIVE:
         return "archives an account"
     if item.operation == pf.CREATE:
