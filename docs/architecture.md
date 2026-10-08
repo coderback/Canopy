@@ -100,6 +100,38 @@ A `change_set` is one intent; its `change_items` are one operation in one org
 - **Switches:** `workspaces.changes_enabled` (owner) and the server kill switch
   `XERO_WRITES_ENABLED` (on by default in development only).
 
+## Tracking categories (Milestone 2b)
+
+Same shape as accounts, one level deeper (a category holds options):
+
+- **Mirror:** each sync reads an org's tracking in full (`includeArchived=true`; at most
+  four categories, so one small call) into `entity_tracking_categories` / `_options`.
+  Archived ones are kept: they count towards Xero's limits and block reusing a name.
+  Unlike accounts, an empty response is a real answer (an org may have none), so it
+  marks the mirror deleted (soft, so mappings survive).
+- **Standard:** `group_tracking_categories` / `_options`, seeded from one org or edited.
+  At most **two active** categories, because Xero allows two per org: a standard with
+  three could never be met. Names unique case-insensitively (categories in the
+  standard, options in their category).
+- **Mapping:** `tracking_category_mappings` / `tracking_option_mappings`, same lifecycle
+  as account mappings. Exact normalised-name matches only, no AI (lists are short).
+  An option maps only within the group category its own category maps to, and is
+  confirmed only after that category is; changing a category's mapping drops option
+  mappings that no longer fit and re-suggests them.
+- **Gaps:** per group category and option × org. An option cell is `no_category` when the
+  org lacks the category itself (create the category first).
+- **Changes:** `create_tracking_category` (with its options), `create_tracking_option`,
+  `update_tracking_category` / `_option` (renames), `archive_tracking_category` /
+  `_option`. No deletes: Xero only deletes never-used ones, and archiving is reversible.
+  Preflight (`tracking/preflight.py`) encodes Xero's rules: two active / four total
+  categories, names 1–100 characters, unique among the org's categories (archived
+  included) and among a category's options. Creating a category is several writes, each
+  with a key derived from the item's (`…-category`, `…-option-<n>`); the category's
+  Xero id is saved on the item (`created_xero_id`) as soon as it exists, so a retry adds
+  only the missing options instead of creating the category twice. Self-approval
+  extends to tracking: only items that bring an org into line with the standard, never
+  archives.
+
 ## Failure behaviour (tested)
 
 - Full sync returning zero accounts never marks the mirror deleted.

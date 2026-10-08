@@ -11,9 +11,9 @@ identical. Deterministic matching handles the obvious cases, an AI suggests the 
 a person confirms every mapping. The result is a live gap matrix (which group accounts
 each org is missing) and an exportable mapping that consolidation tools can use.
 
-> **Status:** v2. Milestone 1 (read-only mapping) and Milestone 2 (approved changes to
-> accounts) are built. Tracking categories are next. The original hackathon build lives on
-> `master`.
+> **Status:** v2. Milestone 1 (read-only mapping), Milestone 2 (approved changes to
+> accounts) and Milestone 2b (tracking categories) are built. The original hackathon build
+> lives on `master`.
 
 ---
 
@@ -50,6 +50,12 @@ each org is missing) and an exportable mapping that consolidation tools can use.
      result stores the account before and after, and a created account closes its gap;
    - write access (`accounting.settings`) is granted per org, only once changes are on;
      `XERO_WRITES_ENABLED=false` stops every write server-wide.
+8. **Tracking categories** — the same standard, mapping, gaps and controlled changes for
+   tracking categories and their options (e.g. Region: London, Bristol). The standard
+   holds at most two active categories, because Xero allows two per org. Matching is by
+   name; changes create a missing category with its options, add an option, rename, or
+   archive, and the checks enforce Xero's limits (two active / four total categories,
+   unique names including archived ones). Archiving is never self-approved.
 
 ## Architecture
 
