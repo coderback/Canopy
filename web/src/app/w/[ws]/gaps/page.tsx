@@ -141,6 +141,12 @@ export default function GapsPage() {
                         <Link href={`/w/${ws}/orgs/${e.id}`} title={e.name} className="block max-w-36 truncate text-[13px] font-medium hover:text-brand-strong">{e.name}</Link>
                         <ProgressBar value={orgCoverage.get(e.id) ?? 0} className="mt-1.5" />
                         <span className="tnum mt-1 block text-[11px] font-normal text-muted">{Math.round((orgCoverage.get(e.id) ?? 0) * 100)}% covered</span>
+                        {e.status === "needs_reconnect" && (
+                          <span title="Needs reconnecting: this organisation's data may be out of date"
+                            className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                            <Icon name="alert" size={12} /> Needs reconnecting
+                          </span>
+                        )}
                       </th>
                     ))}
                   </tr>
@@ -155,7 +161,8 @@ export default function GapsPage() {
                         const c = r.cells[e.id];
                         const style = CELL[c.state];
                         const key = `${r.group_account.id}:${e.id}`;
-                        const selectable = canPropose && c.state === "gap";
+                        // No proposals for an org that needs reconnecting: they'd be blocked anyway.
+                        const selectable = canPropose && c.state === "gap" && e.status === "active";
                         const on = picked.has(key);
                         return (
                           <td key={e.id} className="border-b border-border px-3 py-2.5 group-hover:bg-surface-hover">

@@ -52,10 +52,12 @@ export function TrackingGaps({ ws, only, canPropose }: { ws: string; only: "gaps
     }
   }
 
+  const stale = new Set(entities.filter((e) => e.status !== "active").map((e) => e.id));
+
   function cell(c: Cell, p: Pick, label: string) {
     const style = GAP_CELL[c.state];
     const on = picked.has(keyOf(p));
-    if (!(canPropose && c.state === "gap")) {
+    if (!(canPropose && c.state === "gap" && !stale.has(p.entityId))) {
       const title = c.state === "no_category" ? "The organisation doesn't have this category yet" : style.name;
       return <span title={title} className={`grid h-7 w-7 place-items-center rounded-lg text-xs font-semibold ${style.cls}`}>{style.label}</span>;
     }
@@ -89,6 +91,12 @@ export function TrackingGaps({ ws, only, canPropose }: { ws: string; only: "gaps
                 {entities.map((e) => (
                   <th key={e.id} title={e.name} className="min-w-32 border-b border-border bg-surface-sunken px-3 py-3 text-left text-[13px] font-medium">
                     <span className="block max-w-36 truncate">{e.name}</span>
+                    {e.status === "needs_reconnect" && (
+                    <span title="Needs reconnecting: this organisation's data may be out of date"
+                      className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                      <Icon name="alert" size={12} /> Needs reconnecting
+                    </span>
+                  )}
                   </th>
                 ))}
               </tr>

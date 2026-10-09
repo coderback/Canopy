@@ -76,6 +76,10 @@ export const api = {
   acceptInvitation: (token: string) => request<S["WorkspaceIdOut"]>("POST", "/invitations/accept", { token }),
 
   entities: (w: string) => request<Entity[]>("GET", `${ws(w)}/entities`),
+  // Disconnect: Xero drops the connection; Canopy keeps the org's data 30 days unless removeNow.
+  disconnectEntity: (w: string, e: string, removeNow = false) =>
+    request<Entity>("POST", `${ws(w)}/entities/${e}/disconnect`, { remove_now: removeNow }),
+  removeEntityData: (w: string, e: string) => request<Entity>("POST", `${ws(w)}/entities/${e}/remove-data`),
   syncEntity: (w: string, e: string, full = false) =>
     request<S["QueuedOut"]>("POST", `${ws(w)}/entities/${e}/sync?full=${full}`),
 

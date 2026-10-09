@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { api, connectUrl, type Entity, type GapMatrix, type GroupAccount } from "@/lib/api";
 import { useRole, useSession } from "@/lib/session";
 import { useData } from "@/lib/use-data";
 import {
-  Button, ButtonLink, Card, EmptyState, ErrorNote, Icon, Loading, Notice, PageTitle, Panel, ProgressRing, StatCard, SyncBadge,
+  Badge, Button, ButtonLink, Card, EmptyState, ErrorNote, Icon, Loading, Menu, Notice, PageTitle, Panel, ProgressRing, StatCard,
+  SyncBadge,
 } from "@/components/ui";
 
 const BUSY = new Set(["queued", "running"]);
@@ -59,6 +60,20 @@ export default function Overview() {
     }
   }
 
+  async function act(fn: () => Promise<unknown>) {
+    try {
+      await fn();
+      await Promise.all([entities.reload(), gaps.reload()]);
+    } catch (err) {
+      entities.setError((err as Error).message);
+    }
+  }
+
+  const needsReconnect = orgs.filter((o) => o.status === "needs_reconnect");
+  const connected = orgs.filter((o) => o.status !== "disconnected");
+  // Disconnected organisations are listed last.
+  const listed = [...connected, ...orgs.filter((o) => o.status === "disconnected")];
+
   const cov = [...coverage.values()];
   const totalCells = cov.reduce((n, c) => n + c.total, 0);
   const mappedCells = cov.reduce((n, c) => n + c.mapped, 0);
@@ -90,6 +105,15 @@ export default function Overview() {
         </Notice>
       )}
 
+      {needsReconnect.length > 0 && (
+        <Notice tone="warn" className="mb-5"
+          action={isAdmin ? <ButtonLink href={connectUrl(ws)} external size="sm" variant="dark" icon="link">Reconnect in Xero</ButtonLink> : undefined}>
+          <b>{needsReconnect.map((o) => o.name).join(", ")}</b> {needsReconnect.length === 1 ? "needs" : "need"} reconnecting.
+          Canopy can&apos;t reach {needsReconnect.length === 1 ? "it" : "them"}, so the data may be out of date, and changes are
+          paused until {needsReconnect.length === 1 ? "it's" : "they're"} reconnected.
+        </Notice>
+      )}
+
       {!ready || orgs.every((o) => o.sync_status !== "ok") ? (
         <Setup orgs={orgs} standard={std} ws={ws} isAdmin={isAdmin} />
       ) : null}
@@ -107,7 +131,8 @@ export default function Overview() {
           hint={reviewCount ? `${reviewCount} need a second reviewer` : "Nothing waiting"} />
       </div>
 
-      <Panel title="Organisations" hint={`${orgs.length} connected`}
+      <Panel title="Organisations"
+        hint={`${connected.length} connected${orgs.length > connected.length ? ` · ${orgs.length - connected.length} disconnected` : ""}`}
         action={isAdmin && <Button variant="outline" size="sm" icon="plus" onClick={() => { window.location.href = connectUrl(ws); }}>Connect</Button>}>
         {orgs.length === 0 ? (
           <EmptyState icon="building" title="No organisations connected yet"
@@ -116,8 +141,10 @@ export default function Overview() {
           </EmptyState>
         ) : (
           <ul className="divide-y divide-border">
-            {orgs.map((e) => (
-              <OrgRow key={e.id} org={e} ws={ws} cov={coverage.get(e.id)} isAdmin={isAdmin} onSync={() => sync(e)} />
+            {listed.map((e) => (
+              <OrgRow key={e.id} org={e} ws={ws} cov={coverage.get(e.id)} isAdmin={isAdmin} onSync={() => sync(e)}
+                onDisconnect={(removeNow) => act(() => api.disconnectEntity(ws, e.id, removeNow))}
+                onRemoveData={() => act(() => api.removeEntityData(ws, e.id))} />
             ))}
           </ul>
         )}
@@ -126,14 +153,23 @@ export default function Overview() {
   );
 }
 
-function OrgRow({ org: e, ws, cov, isAdmin, onSync }: {
+function OrgRow({ org: e, ws, cov, isAdmin, onSync, onDisconnect, onRemoveData }: {
   org: Entity; ws: string; cov?: Coverage; isAdmin: boolean; onSync: () => void;
+  onDisconnect: (removeNow: boolean) => Promise<void>; onRemoveData: () => Promise<void>;
 }) {
+  // Disconnecting is confirmed inline (no browser dialog): what happens to the data is the choice.
+  const [confirming, setConfirming] = useState(false);
+  const [working, setWorking] = useState(false);
   const busy = BUSY.has(e.sync_status);
+  const disconnected = e.status === "disconnected";
+  const run = async (fn: () => Promise<void>) => { setWorking(true); await fn(); setWorking(false); setConfirming(false); };
+  const menu = !isAdmin ? [] : disconnected
+    ? (e.purged_at ? [] : [{ label: "Remove its data now", icon: "trash" as const, danger: true, onClick: () => run(onRemoveData) }])
+    : [{ label: "Disconnect…", icon: "x" as const, danger: true, onClick: () => setConfirming(true) }];
   const pct = cov && cov.total ? cov.mapped / cov.total : 0;
   const tone = pct >= 0.9 ? "brand" : pct >= 0.5 ? "amber" : "red";
   return (
-    <li className="group flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3.5 transition hover:bg-surface-hover sm:px-5">
+    <li className={`group flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3.5 transition hover:bg-surface-hover sm:px-5 ${disconnected ? "opacity-70" : ""}`}>
       <Link href={`/w/${ws}/orgs/${e.id}`} className="flex min-w-0 flex-1 basis-64 items-center gap-4">
         <ProgressRing value={pct} tone={cov?.total ? tone : "brand"} label={cov?.total ? undefined : "—"} />
         <span className="min-w-0">
@@ -151,22 +187,51 @@ function OrgRow({ org: e, ws, cov, isAdmin, onSync }: {
       </Link>
 
       <div className="flex min-w-36 flex-col items-start gap-1">
-        <SyncBadge status={e.sync_status} />
-        <span className="text-xs text-subtle">{e.last_synced_at ? `Synced ${relative(e.last_synced_at)}` : "Never synced"}</span>
+        {e.status === "active" ? <SyncBadge status={e.sync_status} />
+          : e.status === "needs_reconnect" ? <Badge tone="amber" dot>Needs reconnecting</Badge>
+          : <Badge tone="slate" dot>Disconnected</Badge>}
+        <span className="text-xs text-subtle">
+          {disconnected
+            ? (e.purged_at ? "Data removed" : e.purge_after ? `Data removed ${new Date(e.purge_after).toLocaleDateString()}` : "")
+            : e.last_synced_at ? `Synced ${relative(e.last_synced_at)}` : "Never synced"}
+        </span>
       </div>
 
       <div className="ml-auto flex items-center gap-1.5">
-        {isAdmin && (
+        {isAdmin && e.status === "active" && (
           <Button variant="ghost" size="sm" icon="refresh" onClick={onSync} disabled={busy}>
             {busy ? "Syncing" : "Sync"}
           </Button>
         )}
-        <Link href={`/w/${ws}/orgs/${e.id}`}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-3 text-[13px] font-medium shadow-sm transition hover:bg-surface-hover">
-          Review mapping <Icon name="arrowRight" size={14} />
-        </Link>
+        {isAdmin && e.status !== "active" && (
+          <ButtonLink href={connectUrl(ws)} external size="sm" variant="outline" icon="link">Reconnect</ButtonLink>
+        )}
+        {!disconnected && (
+          <Link href={`/w/${ws}/orgs/${e.id}`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-strong bg-surface px-3 text-[13px] font-medium shadow-sm transition hover:bg-surface-hover">
+            Review mapping <Icon name="arrowRight" size={14} />
+          </Link>
+        )}
+        <Menu items={menu} label={`More actions for ${e.name}`} />
       </div>
-      {e.sync_error && (
+      {e.status === "needs_reconnect" && e.status_reason && (
+        <p className="basis-full rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{e.status_reason}</p>
+      )}
+      {confirming && (
+        <div className="basis-full rounded-xl border border-red-200 bg-red-50/60 p-3.5 text-sm">
+          <p className="font-medium">Disconnect {e.name}?</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">
+            Xero drops Canopy&apos;s connection to it straight away. Its accounts, mappings and tracking stay in Canopy for
+            30 days, so reconnecting restores them, and are then removed. The audit log and change history are kept.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="danger" disabled={working} onClick={() => run(() => onDisconnect(false))}>Disconnect</Button>
+            <Button size="sm" variant="outline" disabled={working} onClick={() => run(() => onDisconnect(true))}>Disconnect and remove its data now</Button>
+            <Button size="sm" variant="ghost" disabled={working} onClick={() => setConfirming(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+      {e.status === "active" && e.sync_error && (
         <p className="basis-full rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{e.sync_error}</p>
       )}
     </li>
