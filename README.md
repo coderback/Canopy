@@ -56,6 +56,12 @@ each org is missing) and an exportable mapping that consolidation tools can use.
    name; changes create a missing category with its options, add an option, rename, or
    archive, and the checks enforce Xero's limits (two active / four total categories,
    unique names including archived ones). Archiving is never self-approved.
+9. **Connections** — each organisation shows whether it's connected, needs reconnecting
+   (Canopy lost access; its data is kept but flagged as stale and changes pause) or was
+   disconnected. Disconnecting drops the connection in Xero immediately, revokes the
+   Xero sign-in once none of its organisations remain, and keeps the data 30 days so a
+   reconnect restores it (or removes it straight away, for offboarding). A nightly check
+   catches organisations removed on Xero's side and cleans up unused connections.
 
 ## Architecture
 

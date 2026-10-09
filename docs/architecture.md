@@ -132,6 +132,30 @@ Same shape as accounts, one level deeper (a category holds options):
   extends to tracking: only items that bring an org into line with the standard, never
   archives.
 
+## Organisation connections
+
+An organisation's `status` is `active`, `needs_reconnect` (access broke: the grant's
+refresh was refused, Xero answered 403 for that org, or it vanished from the grant's
+connection list; data kept and still shown, flagged as stale; new changes blocked) or
+`disconnected` (deliberately, in Canopy), with a plain `status_reason`.
+
+- **Disconnect** (owners/admins): Canopy calls `DELETE /connections/{id}` straight
+  away rather than waiting for tokens to expire, which frees the slot towards the plan's
+  connection limit and fees. When the last organisation on a grant goes, the grant is
+  revoked at Xero and its tokens deleted (`token_encrypted` NULL). The organisation's
+  mirror and mappings are kept for 30 days (`purge_after`), so reconnecting restores
+  them, then purged by the nightly job; "remove now" purges immediately. The
+  organisation row, change history and audit log are kept.
+- **Reconnect** is the connect flow; it reactivates the organisation and cancels any
+  pending purge. Once changes are on, every connect requests write access, because the
+  grant is per Xero user and a read-only reconnect would downgrade it for all their orgs.
+- **Nightly check** (`nightly_connection_check`): each active grant's `/connections` is
+  compared with Canopy's: organisations missing in Xero become `needs_reconnect`;
+  connections Canopy doesn't use (orphans, non-organisation tenants) are deleted. Then
+  organisations past their grace period are purged. Both lists come from SECURITY
+  DEFINER functions returning ids only. Non-organisation tenants are also dropped at
+  connect time.
+
 ## Failure behaviour (tested)
 
 - Full sync returning zero accounts never marks the mirror deleted.
