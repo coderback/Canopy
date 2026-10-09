@@ -21,6 +21,7 @@ from ..core.errors import AppError, Conflict, NotFound
 from ..core.models_base import utcnow
 from ..mapping.matcher import EXACT, MANUAL, Match
 from ..xero.models import Entity
+from ..xero.status import SHOWN
 from .matcher import Named, match_categories, match_options
 from .models import (
     MAX_ACTIVE_CATEGORIES,
@@ -408,7 +409,7 @@ async def gaps(s, workspace_id) -> dict:
     category, so the option can be added to it: `entity_category_id` says where)
     | no_category (the org lacks the category itself)."""
     entities = list(await s.scalars(
-        select(Entity).where(Entity.workspace_id == workspace_id, Entity.status == "active").order_by(Entity.name)))
+        select(Entity).where(Entity.workspace_id == workspace_id, Entity.status.in_(SHOWN)).order_by(Entity.name)))
     cat_rows = (await s.execute(
         select(TrackingCategoryMapping.entity_id, TrackingCategoryMapping.group_category_id,
                TrackingCategoryMapping.status, TrackingCategoryMapping.entity_category_id)
@@ -460,4 +461,5 @@ async def gaps(s, workspace_id) -> dict:
                             "gaps": sum(1 for v in ocells.values() if v["state"] == "gap")})
         rows.append({"group_category": {"id": str(c.id), "name": c.name}, "cells": cells, "gaps": missing,
                      "options": options})
-    return {"entities": [{"id": str(e.id), "name": e.name} for e in entities], "categories": rows}
+    return {"entities": [{"id": str(e.id), "name": e.name, "status": e.status} for e in entities],
+            "categories": rows}

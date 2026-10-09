@@ -2,6 +2,7 @@
 
 import time
 import uuid
+from urllib.parse import parse_qs
 
 import httpx
 import jwt
@@ -83,6 +84,9 @@ class FakeXeroIdentity(httpx.AsyncBaseTransport):
         self.refresh_fails_with: str | None = None
         self.nonce = ""
         self.clock_skew = 0  # seconds Xero's clock is ahead of ours
+        self.deleted: list[str] = []  # connection ids Canopy asked Xero to drop
+        self.revoked: list[str] = []  # refresh tokens Canopy revoked
+        self.delete_fails = False
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url)
@@ -100,7 +104,17 @@ class FakeXeroIdentity(httpx.AsyncBaseTransport):
                 "id_token": id_token(xero_id, email, self.nonce, skew=self.clock_skew),
                 "scope": "openid profile email offline_access accounting.settings.read",
             })
+        if url == oauth.REVOCATION_URL:
+            self.revoked.append(parse_qs(request.content.decode())["token"][0])
+            return httpx.Response(200)
         if url.startswith(oauth.CONNECTIONS_URL):
+            if request.method == "DELETE":
+                if self.delete_fails:
+                    return httpx.Response(503)
+                ref = url.rsplit("/", 1)[1]
+                self.deleted.append(ref)
+                self.tenants = [t for t in self.tenants if t["id"] != ref]
+                return httpx.Response(204)
             return httpx.Response(200, json=self.tenants)
         return httpx.Response(404)
 

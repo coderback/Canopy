@@ -25,6 +25,7 @@ from ..core.security import encrypt_json, hash_token, new_token, pkce_pair
 from ..tenancy.models import Membership, Role, Workspace
 from ..xero import oauth
 from ..xero.models import Entity, XeroConnection
+from ..xero.status import reactivate
 from ..xero.tokens import token_record
 from .models import OAuthState, Session
 
@@ -119,10 +120,13 @@ async def handle_callback(
         raise AppError("Invalid connection request.", code="oauth_state_invalid")
     ws, actor = st.workspace_id, st.user_id
     auth_event = oauth.unverified_claims(tokens["access_token"]).get("authentication_event_id")
-    tenants = [
-        c for c in await identity.list_connections(tokens["access_token"], auth_event)
-        if c.get("tenantType") == "ORGANISATION"
-    ]
+    consented = await identity.list_connections(tokens["access_token"], auth_event)
+    tenants = [c for c in consented if c.get("tenantType") == "ORGANISATION"]
+    # Anything else the user ticked (e.g. a practice) is never used, but would count
+    # towards the app's connection limit: drop it straight away.
+    for c in consented:
+        if c.get("tenantType") != "ORGANISATION" and c.get("id"):
+            await identity.delete_connection(tokens["access_token"], c["id"])
     new_entities = []
     async with unit_of_work(workspace_id=ws, user_id=actor) as s:
         # Filter on the workspace too: RLS also shows the user's memberships elsewhere.
@@ -148,7 +152,9 @@ async def handle_callback(
         for t in tenants:
             existing = await s.scalar(select(Entity).where(Entity.tenant_id == t["tenantId"]))
             if existing:
-                existing.connection_id, existing.status = connection_id, "active"
+                # Reconnected: back to active, any pending purge cancelled.
+                existing.connection_id = connection_id
+                reactivate(existing)
                 existing.xero_connection_ref, existing.name = t.get("id"), t.get("tenantName") or existing.name
                 new_entities.append((existing.id, existing.tenant_id))
                 continue

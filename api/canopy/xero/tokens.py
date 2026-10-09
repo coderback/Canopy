@@ -11,13 +11,14 @@ unlike an in-process asyncio.Lock.
 import time
 import uuid
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from ..core.db import unit_of_work
 from ..core.models_base import utcnow
 from ..core.security import decrypt_json, encrypt_json
-from .models import XeroConnection
+from .models import Entity, XeroConnection
 from .oauth import XeroAuthError, XeroIdentityClient
+from .status import REVOKED_REASON, mark_needs_reconnect
 
 REFRESH_MARGIN_SECONDS = 120
 
@@ -78,7 +79,10 @@ class ConnectionTokens:
                 if not exc.revoked:
                     raise
                 # Persist the revoked status (the block commits on normal exit), then raise.
+                # Every organisation reached through this grant now needs reconnecting.
                 conn.status = "revoked"
+                await mark_needs_reconnect(
+                    s, list(await s.scalars(select(Entity).where(Entity.connection_id == conn.id))), REVOKED_REASON)
                 revoked = exc
             else:
                 conn.token_encrypted = encrypt_json(fresh)

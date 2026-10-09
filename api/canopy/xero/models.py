@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..core.db import Base
@@ -18,10 +18,12 @@ class XeroConnection(WorkspaceScoped, Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     xero_user_id: Mapped[str] = mapped_column(String(64), nullable=False)
     connected_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
-    token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    # NULL once the grant is revoked: secrets are deleted, not kept around.
+    token_encrypted: Mapped[str | None] = mapped_column(Text)
     scopes: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
-    # active | revoked (user disconnected / refresh token rejected) | error
+    # active | revoked (refresh token rejected, or revoked by Canopy once none of
+    # its organisations is connected any more) | error
     last_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at()
 
@@ -30,7 +32,10 @@ class Entity(WorkspaceScoped, Base):
     """A connected Xero organisation within a workspace."""
 
     __tablename__ = "entities"
-    __table_args__ = (UniqueConstraint("workspace_id", "tenant_id"),)
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "tenant_id"),
+        CheckConstraint("status in ('active', 'needs_reconnect', 'disconnected')", name="status_valid"),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     connection_id: Mapped[uuid.UUID] = mapped_column(
@@ -43,7 +48,13 @@ class Entity(WorkspaceScoped, Base):
     base_currency: Mapped[str | None] = mapped_column(String(3))
     country_code: Mapped[str | None] = mapped_column(String(2))
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
-    # active | disconnected
+    # active | needs_reconnect (access broke: grant revoked, Xero refused the org,
+    #   or it vanished from Xero's connection list; data kept, shown as stale)
+    # | disconnected (deliberately, in Canopy; data purged after `purge_after`)
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purge_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sync_status: Mapped[str] = mapped_column(String(16), nullable=False, default="never")
     # never | queued | running | ok | error
     sync_error: Mapped[str | None] = mapped_column(Text)

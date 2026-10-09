@@ -67,8 +67,10 @@ async def org_state(s, entity: Entity) -> pf.OrgState:
 
 async def run_preflight(s, item: ChangeItem) -> list[str]:
     entity = await s.get(Entity, item.entity_id)
-    if entity is None or entity.status != "active":
+    if entity is None or entity.status == "disconnected":
         return ["That organisation is no longer connected."]
+    if entity.status != "active":
+        return [f"{entity.name} needs reconnecting before changes can be made to it."]
     if item.operation in tp.OPERATIONS:
         return await tracking_changes.run_preflight(s, item, entity)
     target = await s.get(EntityAccount, item.entity_account_id) if item.entity_account_id else None

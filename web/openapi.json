@@ -568,6 +568,17 @@
         "title": "DecisionOut",
         "type": "object"
       },
+      "DisconnectRequest": {
+        "properties": {
+          "remove_now": {
+            "default": false,
+            "title": "Remove Now",
+            "type": "boolean"
+          }
+        },
+        "title": "DisconnectRequest",
+        "type": "object"
+      },
       "EntityOut": {
         "properties": {
           "can_write": {
@@ -593,9 +604,58 @@
             "title": "Name",
             "type": "string"
           },
+          "purge_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purge After"
+          },
+          "purged_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purged At"
+          },
           "status": {
+            "enum": [
+              "active",
+              "needs_reconnect",
+              "disconnected"
+            ],
             "title": "Status",
             "type": "string"
+          },
+          "status_changed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Changed At"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
           },
           "sync_error": {
             "anyOf": [
@@ -625,7 +685,11 @@
           "sync_status",
           "sync_error",
           "last_synced_at",
-          "can_write"
+          "can_write",
+          "status_reason",
+          "status_changed_at",
+          "purge_after",
+          "purged_at"
         ],
         "title": "EntityOut",
         "type": "object"
@@ -638,6 +702,16 @@
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "enum": [
+              "active",
+              "needs_reconnect",
+              "disconnected"
+            ],
+            "title": "Status",
             "type": "string"
           }
         },
@@ -3069,6 +3143,69 @@
         ]
       }
     },
+    "/workspaces/{workspace_id}/entities/{entity_id}/disconnect": {
+      "post": {
+        "operationId": "disconnect_entity_workspaces__workspace_id__entities__entity_id__disconnect_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisconnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disconnect Entity",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
     "/workspaces/{workspace_id}/entities/{entity_id}/mappings": {
       "get": {
         "operationId": "entity_mappings_workspaces__workspace_id__entities__entity_id__mappings_get",
@@ -3227,6 +3364,60 @@
           }
         },
         "summary": "Resuggest",
+        "tags": [
+          "workspace"
+        ]
+      }
+    },
+    "/workspaces/{workspace_id}/entities/{entity_id}/remove-data": {
+      "post": {
+        "description": "Remove a disconnected org's data now instead of at the end of its grace period.",
+        "operationId": "remove_entity_data_workspaces__workspace_id__entities__entity_id__remove_data_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Entity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Entity Data",
         "tags": [
           "workspace"
         ]
@@ -4785,7 +4976,7 @@
     },
     "/workspaces/{workspace_id}/xero/connect": {
       "get": {
-        "description": "Connect orgs read-only, or (write=true, once changes are on) re-consent with\nwrite access. Xero lets the user pick which orgs get the new grant.",
+        "description": "Connect (or reconnect) orgs. Read-only while changes are off; once they're\non, every connect asks for write access too, because the grant is stored per\nXero user: a read-only reconnect would otherwise drop write access for every\norg that user connected. Xero lets the user pick which orgs get the grant.",
         "operationId": "connect_xero_workspaces__workspace_id__xero_connect_get",
         "parameters": [
           {

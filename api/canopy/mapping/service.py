@@ -21,6 +21,7 @@ from ..standard.models import GroupAccount
 from ..sync.models import EntityAccount
 from ..sync.service import live_accounts
 from ..xero.models import Entity
+from ..xero.status import SHOWN
 from .matcher import EXACT, MANUAL, UNMATCHED, LocalAccount, Match, StandardAccount, match_accounts
 from .models import AccountMapping
 from .suggest import Complete, suggest
@@ -170,7 +171,7 @@ async def gaps(s, workspace_id: uuid.UUID) -> dict:
     """Matrix of group accounts × active orgs: how many live org accounts are
     CONFIRMED against each group account. 0 = a gap; also reports pending review."""
     entities = list(await s.scalars(
-        select(Entity).where(Entity.workspace_id == workspace_id, Entity.status == "active").order_by(Entity.name)
+        select(Entity).where(Entity.workspace_id == workspace_id, Entity.status.in_(SHOWN)).order_by(Entity.name)
     ))
     standard = list(await s.scalars(
         select(GroupAccount).where(GroupAccount.workspace_id == workspace_id, GroupAccount.status == "active")
@@ -200,7 +201,7 @@ async def gaps(s, workspace_id: uuid.UUID) -> dict:
         rows.append({"group_account": {"id": str(g.id), "code": g.code, "name": g.name},
                      "cells": cells, "gaps": sum(1 for v in cells.values() if v["state"] == "gap")})
     return {
-        "entities": [{"id": str(e.id), "name": e.name} for e in entities],
+        "entities": [{"id": str(e.id), "name": e.name, "status": e.status} for e in entities],
         "rows": rows,
     }
 

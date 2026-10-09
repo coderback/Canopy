@@ -6,7 +6,7 @@ import uuid
 from datetime import timedelta
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, select
@@ -25,10 +25,13 @@ from ..standard import service as standard
 from ..sync.service import FULL, INCREMENTAL
 from ..tenancy.models import Invitation, Membership, Role
 from ..tenancy.models import Workspace as WorkspaceRow
+from ..xero import connections
 from ..xero.models import Entity, XeroConnection
+from ..xero.oauth import XeroIdentityClient
 from ..xero.scopes import can_write
 from . import schemas as S
 from .deps import ADMINS, Workspace, WorkspaceContext, require_role
+from .routes_auth import get_identity_client
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["workspace"])
 
@@ -122,15 +125,14 @@ async def revoke_invitation(invitation_id: uuid.UUID, ctx: WorkspaceContext = Ad
 
 @router.get("/xero/connect")
 async def connect_xero(write: bool = False, ctx: WorkspaceContext = Admin):
-    """Connect orgs read-only, or (write=true, once changes are on) re-consent with
-    write access. Xero lets the user pick which orgs get the new grant."""
-    scopes = None
-    if write:
-        ws = await ctx.session.get(WorkspaceRow, ctx.workspace_id)
-        if not ws.changes_enabled:
-            raise Conflict("Turn on changes for this workspace before granting write access.",
-                           code="changes_disabled")
-        scopes = get_settings().xero_write_scopes
+    """Connect (or reconnect) orgs. Read-only while changes are off; once they're
+    on, every connect asks for write access too, because the grant is stored per
+    Xero user: a read-only reconnect would otherwise drop write access for every
+    org that user connected. Xero lets the user pick which orgs get the grant."""
+    ws = await ctx.session.get(WorkspaceRow, ctx.workspace_id)
+    if write and not ws.changes_enabled:
+        raise Conflict("Turn on changes for this workspace before granting write access.", code="changes_disabled")
+    scopes = get_settings().xero_write_scopes if ws.changes_enabled else None
     url = await auth_service.start_oauth(
         auth_service.CONNECT, user_id=ctx.user_id, workspace_id=ctx.workspace_id,
         redirect_to=f"/w/{ctx.workspace_id}" + ("/settings" if write else ""), scopes=scopes,
@@ -138,13 +140,24 @@ async def connect_xero(write: bool = False, ctx: WorkspaceContext = Admin):
     return RedirectResponse(url, status_code=303)
 
 
+def _iso(dt):
+    return dt.isoformat() if dt else None
+
+
 def _entity(e: Entity, conn: XeroConnection | None) -> dict:
     return {
         "id": str(e.id), "name": e.name, "tenant_id": e.tenant_id, "status": e.status,
-        "sync_status": e.sync_status, "sync_error": e.sync_error,
-        "last_synced_at": e.last_synced_at.isoformat() if e.last_synced_at else None,
-        "can_write": bool(conn and conn.status == "active" and can_write(conn.scopes)),
+        "sync_status": e.sync_status, "sync_error": e.sync_error, "last_synced_at": _iso(e.last_synced_at),
+        "can_write": bool(e.status == "active" and conn and conn.status == "active" and can_write(conn.scopes)),
+        "status_reason": e.status_reason, "status_changed_at": _iso(e.status_changed_at),
+        "purge_after": None if e.purged_at else _iso(e.purge_after), "purged_at": _iso(e.purged_at),
     }
+
+
+async def _entity_out(ctx: WorkspaceContext, entity_id: uuid.UUID) -> dict:
+    ctx.session.expire_all()  # the change was committed by another transaction
+    e = await ctx.session.get(Entity, entity_id)
+    return _entity(e, await ctx.session.get(XeroConnection, e.connection_id))
 
 
 @router.get("/entities", response_model=list[S.EntityOut])
@@ -154,6 +167,26 @@ async def entities(ctx: WorkspaceContext = Workspace):
         .where(Entity.workspace_id == ctx.workspace_id).order_by(Entity.name)
     )).all()
     return [_entity(e, c) for e, c in rows]
+
+
+class DisconnectRequest(BaseModel):
+    # False: keep its data 30 days so reconnecting restores it; True: remove it now.
+    remove_now: bool = False
+
+
+@router.post("/entities/{entity_id}/disconnect", response_model=S.EntityOut)
+async def disconnect_entity(entity_id: uuid.UUID, body: DisconnectRequest, ctx: WorkspaceContext = Admin,
+                            identity: XeroIdentityClient = Depends(get_identity_client)):
+    await connections.disconnect(ctx.workspace_id, entity_id, ctx.user_id, remove_now=body.remove_now,
+                                 identity=identity)
+    return await _entity_out(ctx, entity_id)
+
+
+@router.post("/entities/{entity_id}/remove-data", response_model=S.EntityOut)
+async def remove_entity_data(entity_id: uuid.UUID, ctx: WorkspaceContext = Admin):
+    """Remove a disconnected org's data now instead of at the end of its grace period."""
+    await connections.purge(ctx.workspace_id, entity_id, ctx.user_id)
+    return await _entity_out(ctx, entity_id)
 
 
 @router.post("/entities/{entity_id}/sync", status_code=202, response_model=S.QueuedOut)

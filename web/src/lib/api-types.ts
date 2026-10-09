@@ -332,6 +332,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/{workspace_id}/entities/{entity_id}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disconnect Entity */
+        post: operations["disconnect_entity_workspaces__workspace_id__entities__entity_id__disconnect_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{workspace_id}/entities/{entity_id}/mappings": {
         parameters: {
             query?: never;
@@ -377,6 +394,26 @@ export interface paths {
         put?: never;
         /** Resuggest */
         post: operations["resuggest_workspaces__workspace_id__entities__entity_id__mappings_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{workspace_id}/entities/{entity_id}/remove-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Entity Data
+         * @description Remove a disconnected org's data now instead of at the end of its grace period.
+         */
+        post: operations["remove_entity_data_workspaces__workspace_id__entities__entity_id__remove_data_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -837,8 +874,10 @@ export interface paths {
         };
         /**
          * Connect Xero
-         * @description Connect orgs read-only, or (write=true, once changes are on) re-consent with
-         *     write access. Xero lets the user pick which orgs get the new grant.
+         * @description Connect (or reconnect) orgs. Read-only while changes are off; once they're
+         *     on, every connect asks for write access too, because the grant is stored per
+         *     Xero user: a read-only reconnect would otherwise drop write access for every
+         *     org that user connected. Xero lets the user pick which orgs get the grant.
          */
         get: operations["connect_xero_workspaces__workspace_id__xero_connect_get"];
         put?: never;
@@ -1009,6 +1048,14 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** DisconnectRequest */
+        DisconnectRequest: {
+            /**
+             * Remove Now
+             * @default false
+             */
+            remove_now: boolean;
+        };
         /** EntityOut */
         EntityOut: {
             /** Can Write */
@@ -1019,8 +1066,19 @@ export interface components {
             last_synced_at: string | null;
             /** Name */
             name: string;
-            /** Status */
-            status: string;
+            /** Purge After */
+            purge_after: string | null;
+            /** Purged At */
+            purged_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "needs_reconnect" | "disconnected";
+            /** Status Changed At */
+            status_changed_at: string | null;
+            /** Status Reason */
+            status_reason: string | null;
             /** Sync Error */
             sync_error: string | null;
             /** Sync Status */
@@ -1034,6 +1092,12 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /**
+             * Status
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "needs_reconnect" | "disconnected";
         };
         /** GapCell */
         GapCell: {
@@ -2177,6 +2241,42 @@ export interface operations {
             };
         };
     };
+    disconnect_entity_workspaces__workspace_id__entities__entity_id__disconnect_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisconnectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     entity_mappings_workspaces__workspace_id__entities__entity_id__mappings_get: {
         parameters: {
             query?: never;
@@ -2260,6 +2360,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QueuedOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_entity_data_workspaces__workspace_id__entities__entity_id__remove_data_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entity_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityOut"];
                 };
             };
             /** @description Validation Error */

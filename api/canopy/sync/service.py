@@ -18,8 +18,9 @@ from sqlalchemy.dialects.postgresql import insert
 from ..core.db import unit_of_work
 from ..core.models_base import utcnow
 from ..tracking.sync import write_tracking
-from ..xero.client import XeroClient, parse_xero_date
+from ..xero.client import XeroApiError, XeroClient, parse_xero_date
 from ..xero.models import Entity
+from ..xero.status import REFUSED_REASON, mark_needs_reconnect
 from ..xero.tokens import ConnectionTokens
 from .models import EntityAccount, EntityTaxRate, SyncRun
 
@@ -65,7 +66,7 @@ async def sync_entity_accounts(
     async with unit_of_work(workspace_id=workspace_id) as s:
         entity = await s.get(Entity, entity_id)
         if entity is None or entity.status != "active":
-            raise LookupError(f"entity {entity_id} is not an active entity in this workspace")
+            raise LookupError(f"{entity.name if entity else 'That organisation'} isn't connected; reconnect it first.")
         tenant_id, connection_id = entity.tenant_id, entity.connection_id
         since = entity.accounts_modified_since if kind == INCREMENTAL else None
         if kind == INCREMENTAL and since is None:
@@ -194,6 +195,10 @@ async def mark_entity_failed(workspace_id: uuid.UUID, entity_id: uuid.UUID, exc:
 async def _mark_failed(workspace_id: uuid.UUID, entity_id: uuid.UUID, run_id: uuid.UUID, exc: Exception) -> None:
     message = f"{type(exc).__name__}: {str(exc)[:500]}"
     async with unit_of_work(workspace_id=workspace_id) as s:
+        if isinstance(exc, XeroApiError) and exc.status_code == 403:
+            # Xero refused this org specifically: it was disconnected on Xero's side.
+            # (401 would be our token, which the refresh path already handles.)
+            await mark_needs_reconnect(s, [await s.get(Entity, entity_id)], REFUSED_REASON)
         await s.execute(
             update(Entity).where(Entity.id == entity_id).values(sync_status="error", sync_error=message)
         )

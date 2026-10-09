@@ -74,11 +74,16 @@ class EntityOut(BaseModel):
     id: str
     name: str
     tenant_id: str
-    status: str
+    status: Literal["active", "needs_reconnect", "disconnected"]
     sync_status: str
     sync_error: str | None
     last_synced_at: str | None
     can_write: bool
+    status_reason: str | None
+    status_changed_at: str | None
+    # A disconnected org's data is removed after this date (None once removed).
+    purge_after: str | None
+    purged_at: str | None
 
 
 class GroupAccountOut(BaseModel):
@@ -127,6 +132,8 @@ class DecisionOut(BaseModel):
 class EntityRef(BaseModel):
     id: str
     name: str
+    # Gap matrices also show orgs that need reconnecting, flagged as stale.
+    status: Literal["active", "needs_reconnect", "disconnected"] = "active"
 
 
 class GapCell(BaseModel):

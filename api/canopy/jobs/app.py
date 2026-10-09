@@ -26,6 +26,7 @@ from ..llm import complete_structured
 from ..mapping.service import generate_suggestions
 from ..sync.service import FULL, INCREMENTAL, mark_entity_failed, sync_entity_accounts
 from ..tracking import service as tracking
+from ..xero import connections
 from ..xero.client import QuotaExhausted
 from ..xero.tokens import ConnectionRevoked
 
@@ -130,3 +131,22 @@ async def nightly_full_sync(timestamp: int) -> None:
         rows = (await s.execute(text("select workspace_id, entity_id, tenant_id from canopy_active_entities()"))).all()
     for workspace_id, entity_id, tenant_id in rows:
         await enqueue_sync(workspace_id, entity_id, tenant_id, FULL)
+
+
+@app.periodic(cron="30 2 * * *")
+@app.task(name="nightly_connection_check", queue="xero")
+async def nightly_connection_check(timestamp: int) -> None:
+    """Each active grant's connection list against ours (flags orgs removed in
+    Xero, removes unused connections), then remove the data of organisations
+    disconnected more than the grace period ago. Listing across workspaces goes
+    through SECURITY DEFINER functions that return only ids."""
+    async with unit_of_work() as s:
+        grants = (await s.execute(text("select workspace_id, connection_id from canopy_active_connections()"))).all()
+        due = (await s.execute(text("select workspace_id, entity_id from canopy_entities_due_for_purge()"))).all()
+    for workspace_id, connection_id in grants:
+        try:
+            await connections.check_grant(workspace_id, connection_id)
+        except Exception:  # noqa: BLE001 — one grant failing mustn't stop the others
+            log.exception("connection check failed for grant %s", connection_id)
+    for workspace_id, entity_id in due:
+        await connections.purge(workspace_id, entity_id)

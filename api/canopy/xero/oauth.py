@@ -19,6 +19,7 @@ AUTHORIZE_URL = "https://login.xero.com/identity/connect/authorize"
 TOKEN_URL = "https://identity.xero.com/connect/token"
 JWKS_URL = "https://identity.xero.com/.well-known/openid-configuration/jwks"
 CONNECTIONS_URL = "https://api.xero.com/connections"
+REVOCATION_URL = "https://identity.xero.com/connect/revocation"
 ISSUER = "https://identity.xero.com"
 
 LOGIN_SCOPES = "openid profile email"
@@ -113,6 +114,17 @@ class XeroIdentityClient:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
         if resp.status_code not in (204, 404):
+            resp.raise_for_status()
+
+    async def revoke(self, refresh_token: str) -> None:
+        """Revoke a grant: Xero drops every connection it holds. Used once none of
+        its organisations is connected in Canopy any more."""
+        s = get_settings()
+        async with self._client() as client:
+            resp = await client.post(REVOCATION_URL, data={"token": refresh_token},
+                                     auth=(s.xero_client_id, s.xero_client_secret))
+        # A token that's already invalid is fine: the grant is gone either way.
+        if resp.status_code >= 400 and not (resp.status_code == 400 and "invalid" in resp.text):
             resp.raise_for_status()
 
 

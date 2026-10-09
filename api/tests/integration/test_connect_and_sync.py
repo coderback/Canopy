@@ -37,6 +37,9 @@ class FakeAccounting(httpx.AsyncBaseTransport):
         if self.status == 429:
             headers |= {"Retry-After": str(self.retry_after), "X-Rate-Limit-Problem": "day"}
             return httpx.Response(429, headers=headers, json={})
+        if self.status >= 400:
+            return httpx.Response(self.status, headers=headers, json={"Title": "Forbidden",
+                                                                      "Detail": "AuthenticationUnsuccessful"})
         return httpx.Response(200, headers=headers, json={"Accounts": self.accounts})
 
 
