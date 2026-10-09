@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SessionProvider } from "@/lib/session";
 import "./globals.css";
@@ -12,12 +12,14 @@ export const metadata: Metadata = {
     "Map every Xero organisation's chart of accounts to one group standard, see the gaps, and keep them consistent.",
 };
 
+export const viewport: Viewport = { themeColor: "#064e3b" };
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     // suppressHydrationWarning: browser extensions mutate <html>/<body> attributes
     // before React hydrates. Only suppresses this element's own attributes.
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
-      <body className="min-h-full flex flex-col" suppressHydrationWarning>
+      <body className="flex min-h-full flex-col" suppressHydrationWarning>
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

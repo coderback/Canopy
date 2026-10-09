@@ -1,14 +1,19 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api, type GroupAccount, type MappingRow } from "@/lib/api";
 import { useRole } from "@/lib/session";
 import { useData } from "@/lib/use-data";
-import { Badge, Button, Card, ConfidenceBadge, ErrorNote, Loading, PageTitle, Segmented, SourceBadge } from "@/components/ui";
+import {
+  Badge, Button, Card, Code, ConfidenceBadge, EmptyState, ErrorNote, Icon, Loading, Menu, Notice, PageTitle, ProgressRing,
+  SearchInput, Segmented, SourceBadge, SyncBadge, Tabs,
+} from "@/components/ui";
+import { GroupPicker } from "@/components/group-picker";
 import { TrackingMapping } from "./tracking-mapping";
 
 type Filter = "review" | "confirmed" | "all";
+type Section = "accounts" | "tracking";
 
 // Needs a human: anything suggested, rejected, or not yet looked at.
 const needsReview = (r: MappingRow) => !r.mapping || r.mapping.status !== "confirmed";
@@ -21,17 +26,31 @@ export default function OrgMapping() {
   const standard = useData(() => api.standard(ws));
   const entities = useData(() => api.entities(ws));
   const settings = useData(() => api.settings(ws));
+  const [section, setSection] = useState<Section>("accounts");
   const [filter, setFilter] = useState<Filter>("review");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const all = useMemo(() => rows.data ?? [], [rows.data]);
+  const counts = useMemo(() => {
+    const review = all.filter(needsReview).length;
+    return { review, confirmed: all.length - review, all: all.length };
+  }, [all]);
 
   if (!rows.data || !standard.data || !entities.data || !settings.data) return <Loading />;
   const canPropose = settings.data.changes_enabled && ["owner", "admin", "preparer"].includes(role ?? "");
   const org = entities.data.find((e) => e.id === entity);
-  const all = rows.data;
-  const shown = all.filter((r) => filter === "all" || (filter === "review" ? needsReview(r) : !needsReview(r)));
+  const q = query.trim().toLowerCase();
+  const shown = all.filter((r) => {
+    if (filter !== "all" && (filter === "review" ? !needsReview(r) : needsReview(r))) return false;
+    if (!q) return true;
+    return `${r.account.code ?? ""} ${r.account.name} ${r.group_account?.name ?? ""} ${r.group_account?.code ?? ""}`.toLowerCase().includes(q);
+  });
   const exactPending = all.filter((r) => r.mapping?.status === "suggested" && r.mapping.source === "exact").length;
+  const unmatchedCount = all.filter((r) => r.mapping?.source === "unmatched" && r.mapping.status !== "confirmed").length;
   const active = standard.data.filter((g) => g.status === "active");
+  const pct = all.length ? counts.confirmed / all.length : 0;
 
   // One-click changes start a draft for review; nothing is written until approved.
   async function propose(title: string, operation: "update_account" | "archive_account", accountId: string,
@@ -61,38 +80,97 @@ export default function OrgMapping() {
   return (
     <>
       <PageTitle
-        title={org ? `${org.name}: mapping` : "Mapping"}
-        subtitle={`${all.length - all.filter(needsReview).length} of ${all.length} active accounts confirmed.`}
-        action={isAdmin && (
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => act(() => api.resuggest(ws, entity), "Re-suggesting in the background; refresh in a moment.")}>Re-suggest</Button>
-            <Button disabled={exactPending === 0} onClick={() => act(() => api.confirmExact(ws, entity))}>
+        title={org?.name ?? "Mapping"}
+        badge={org && <SyncBadge status={org.sync_status} />}
+        subtitle="Match each account in this organisation to the group standard. Suggestions are never final until you confirm them."
+        action={isAdmin && section === "accounts" && (
+          <>
+            <Button variant="outline" icon="refresh" onClick={() => act(() => api.resuggest(ws, entity), "Re-suggesting in the background. Refresh in a moment.")}>
+              Re-suggest
+            </Button>
+            <Button icon="check" disabled={exactPending === 0} onClick={() => act(() => api.confirmExact(ws, entity))}>
               Confirm {exactPending} exact {exactPending === 1 ? "match" : "matches"}
             </Button>
-          </div>
+          </>
         )}
       />
       <ErrorNote message={error ?? rows.error} />
-      {notice && <p className="mb-3 text-sm text-muted">{notice}</p>}
-      {standard.data.length === 0 && <Card className="mb-4 p-4 text-sm text-muted">Set up the group standard first; suggestions appear once it exists.</Card>}
-      <div className="mb-3 max-w-sm">
-        <Segmented<Filter> value={filter} onChange={setFilter}
-          options={[{ value: "review", label: "Needs review" }, { value: "confirmed", label: "Confirmed" }, { value: "all", label: "All" }]} />
-      </div>
-      <Card className="divide-y divide-border">
-        {shown.length === 0 && <p className="p-6 text-sm text-muted">Nothing here.</p>}
-        {shown.map((r) => (
-          <Row key={r.account.id} row={r} groups={active} canEdit={isAdmin} canPropose={canPropose}
-            decide={(action, groupId) => act(() => api.decide(ws, r.mapping!.id, { action, group_account_id: groupId ?? null }))}
-            rename={(name) => propose(`Rename ${r.account.code ?? ""} ${r.account.name} in ${org?.name ?? "org"}`,
-              "update_account", r.account.id, { name })}
-            archive={() => propose(`Archive ${r.account.code ?? ""} ${r.account.name} in ${org?.name ?? "org"}`,
-              "archive_account", r.account.id)} />
-        ))}
+      {notice && <Notice tone="info" className="mb-4">{notice}</Notice>}
+
+      <Card className="mb-6 grid items-center gap-5 p-5 sm:grid-cols-[auto_1fr_auto]">
+        <ProgressRing value={pct} size={64} stroke={6} tone={pct >= 0.9 ? "brand" : pct >= 0.5 ? "amber" : "red"} />
+        <div>
+          <p className="text-[15px] font-semibold">
+            <span className="tnum">{counts.confirmed}</span> of <span className="tnum">{all.length}</span> accounts confirmed
+          </p>
+          <p className="mt-0.5 text-[13px] text-muted">
+            {counts.review === 0
+              ? "Every active account is mapped. Nicely done."
+              : <>{counts.review} still need a decision{unmatchedCount > 0 && <>, {unmatchedCount} with no match found</>}.</>}
+          </p>
+        </div>
+        <dl className="hidden gap-6 text-right sm:flex">
+          <Stat label="To review" value={counts.review} tone="amber" />
+          <Stat label="Confirmed" value={counts.confirmed} tone="good" />
+        </dl>
       </Card>
-      <TrackingMapping ws={ws} entity={entity} orgName={org?.name ?? "This organisation"} isAdmin={isAdmin}
-        canPropose={canPropose} />
+
+      <Tabs<Section> value={section} onChange={setSection}
+        options={[{ value: "accounts", label: "Accounts", icon: "layers", count: all.length }, { value: "tracking", label: "Tracking categories", icon: "tag" }]} />
+
+      <div className="mt-5">
+        {section === "accounts" ? (
+          <>
+            {standard.data.length === 0 && (
+              <Notice tone="warn" className="mb-4">Set up the group standard first. Suggestions appear once it exists.</Notice>
+            )}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <Segmented<Filter> value={filter} onChange={setFilter}
+                options={[
+                  { value: "review", label: "Needs review", count: counts.review },
+                  { value: "confirmed", label: "Confirmed", count: counts.confirmed },
+                  { value: "all", label: "All", count: counts.all },
+                ]} />
+              <SearchInput value={query} onChange={setQuery} label="Search accounts" placeholder="Search by code or name…" className="w-full sm:w-72" />
+            </div>
+            <Card className="overflow-hidden">
+              <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_232px] gap-4 border-b border-border bg-surface-sunken/60 px-5 py-2.5 md:grid">
+                <span className="eyebrow">This organisation</span>
+                <span className="eyebrow">Group standard</span>
+                <span className="eyebrow text-right">Decision</span>
+              </div>
+              {shown.length === 0 ? (
+                <EmptyState icon={filter === "review" ? "check" : "search"} title={q ? "No accounts match your search" : filter === "review" ? "All caught up" : "Nothing here"}>
+                  {q ? "Try a different code or name." : filter === "review" ? "There are no accounts waiting for a decision." : undefined}
+                </EmptyState>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {shown.map((r) => (
+                    <Row key={r.account.id} row={r} groups={active} canEdit={isAdmin} canPropose={canPropose}
+                      decide={(action, groupId) => act(() => api.decide(ws, r.mapping!.id, { action, group_account_id: groupId ?? null }))}
+                      rename={(name) => propose(`Rename ${r.account.code ?? ""} ${r.account.name} in ${org?.name ?? "org"}`,
+                        "update_account", r.account.id, { name })}
+                      archive={() => propose(`Archive ${r.account.code ?? ""} ${r.account.name} in ${org?.name ?? "org"}`,
+                        "archive_account", r.account.id)} />
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </>
+        ) : (
+          <TrackingMapping ws={ws} entity={entity} orgName={org?.name ?? "This organisation"} isAdmin={isAdmin} canPropose={canPropose} />
+        )}
+      </div>
     </>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: number; tone: "amber" | "good" }) {
+  return (
+    <div>
+      <dt className="eyebrow">{label}</dt>
+      <dd className={`tnum mt-1 text-2xl font-semibold ${tone === "amber" && value > 0 ? "text-amber-700" : tone === "good" ? "text-brand-strong" : ""}`}>{value}</dd>
+    </div>
   );
 }
 
@@ -106,68 +184,80 @@ function Row({ row, groups, canEdit, canPropose, decide, rename, archive }: {
   archive: () => void;
 }) {
   const [assigning, setAssigning] = useState(false);
-  const [choice, setChoice] = useState("");
   const m = row.mapping;
   const unmatched = m?.source === "unmatched" && m.status !== "confirmed";
-  const target = row.group_account
-    ? `${row.group_account.code} ${row.group_account.name}`
-    : unmatched ? "Needs a group account" : "No group equivalent";
+  const confirmed = m?.status === "confirmed";
+
+  const menu = canPropose ? [
+    ...(confirmed && row.group_account && row.group_account.name !== row.account.name
+      ? [{ label: `Propose renaming to “${row.group_account.name}”`, icon: "edit" as const, onClick: () => rename(row.group_account!.name) }]
+      : []),
+    { label: "Propose archiving this account", icon: "archive" as const, onClick: archive, danger: true },
+  ] : [];
 
   return (
-    <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] md:items-start">
-      <div>
-        <p className="font-medium text-slate-900"><span className="font-mono text-muted">{row.account.code ?? "—"}</span> {row.account.name}</p>
-        <p className="text-xs text-muted">{row.account.type}</p>
+    <li className="grid gap-x-4 gap-y-3 px-5 py-4 transition hover:bg-surface-hover/60 md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_232px] md:items-start">
+      {/* Local account */}
+      <div className="min-w-0">
+        <p className="flex items-center gap-2 font-medium">
+          <Code>{row.account.code ?? "—"}</Code>
+          <span className="truncate">{row.account.name}</span>
+        </p>
+        <p className="mt-1 text-xs capitalize text-subtle">{row.account.type.toLowerCase()}</p>
       </div>
-      <div className="space-y-1">
+
+      {/* Suggested / confirmed group account */}
+      <div className="min-w-0 space-y-1.5">
         {!m ? (
           <p className="text-sm text-muted">No suggestion yet.</p>
         ) : (
           <>
-            <p className="text-sm"><span className="text-muted">→</span> <b>{target}</b></p>
-            <div className="flex flex-wrap gap-1.5">
+            <p className="flex items-center gap-2 text-sm">
+              <Icon name="arrowRight" size={15} className={unmatched ? "text-amber-500" : "text-brand"} />
+              {row.group_account ? (
+                <>
+                  <Code>{row.group_account.code}</Code>
+                  <b className="truncate font-medium">{row.group_account.name}</b>
+                </>
+              ) : (
+                <span className={unmatched ? "font-medium text-amber-700" : "text-muted"}>
+                  {unmatched ? "Needs a group account" : "Local only (no group equivalent)"}
+                </span>
+              )}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 pl-[23px]">
               <SourceBadge source={m.source} />
               {m.status === "suggested" && m.source !== "unmatched" && <ConfidenceBadge value={m.confidence} />}
-              {m.status === "confirmed" && <Badge tone="emerald">confirmed</Badge>}
-              {m.status === "rejected" && <Badge tone="red">rejected</Badge>}
+              {confirmed && <Badge tone="emerald" dot>Confirmed</Badge>}
+              {m.status === "rejected" && <Badge tone="red" dot>Rejected</Badge>}
             </div>
-            <p className="text-xs text-slate-600">{m.reasoning}</p>
+            {m.reasoning && <p className="line-clamp-2 pl-[23px] text-xs leading-relaxed text-muted" title={m.reasoning}>{m.reasoning}</p>}
           </>
         )}
-        {canPropose && (
-          <div className="flex flex-wrap gap-3 pt-1 text-xs">
-            {m?.status === "confirmed" && row.group_account && row.group_account.name !== row.account.name && (
-              <button className="text-brand-strong underline" onClick={() => rename(row.group_account!.name)}>
-                Propose renaming to “{row.group_account.name}”
-              </button>
-            )}
-            <button className="text-slate-600 underline" onClick={archive}>Propose archiving</button>
-          </div>
-        )}
       </div>
-      {canEdit && m && (
-        <div className="flex flex-wrap items-center justify-end gap-1">
-          {assigning ? (
-            <>
-              <select value={choice} onChange={(e) => setChoice(e.target.value)} aria-label={`Group account for ${row.account.name}`}
-                className="max-w-56 rounded-lg border border-border-strong px-2 py-1.5 text-sm">
-                <option value="">Choose…</option>
-                <option value="local">Local only (no group equivalent)</option>
-                {groups.map((g) => <option key={g.id} value={g.id}>{g.code} {g.name}</option>)}
-              </select>
-              <Button disabled={!choice} onClick={() => { decide("assign", choice === "local" ? null : choice); setAssigning(false); }}>Save</Button>
-              <Button variant="ghost" onClick={() => setAssigning(false)}>Cancel</Button>
-            </>
-          ) : (
-            <>
-              {/* Nothing to confirm on an unmatched row: a person has to choose. */}
-              {m.status !== "confirmed" && !unmatched && <Button onClick={() => decide("confirm")}>Confirm</Button>}
-              {m.status === "suggested" && !unmatched && <Button variant="ghost" onClick={() => decide("reject")}>Reject</Button>}
-              <Button variant={unmatched ? "primary" : "ghost"} onClick={() => setAssigning(true)}>{unmatched ? "Choose…" : "Change…"}</Button>
-            </>
-          )}
-        </div>
+
+      {/* Decision */}
+      <div className="flex items-center gap-1.5 md:justify-end">
+        {canEdit && m && (
+          <>
+            {/* Nothing to confirm on an unmatched row: a person has to choose. */}
+            {!confirmed && !unmatched && <Button size="sm" icon="check" onClick={() => decide("confirm")}>Confirm</Button>}
+            {m.status === "suggested" && !unmatched && <Button size="sm" variant="ghost" onClick={() => decide("reject")}>Reject</Button>}
+            <Button size="sm" variant={unmatched ? "primary" : "outline"} onClick={() => setAssigning(true)}>
+              {unmatched ? "Choose…" : "Change"}
+            </Button>
+          </>
+        )}
+        <Menu items={menu} />
+      </div>
+
+      {assigning && (
+        <GroupPicker open onClose={() => setAssigning(false)} title="Choose a group account"
+          subject={<>Mapping <b className="text-foreground">{row.account.code ?? "—"} {row.account.name}</b></>}
+          choices={groups.map((g) => ({ id: g.id, name: g.name, code: g.code, meta: g.type.toLowerCase() }))}
+          current={confirmed ? (row.group_account?.id ?? null) : undefined}
+          onSave={(id) => decide("assign", id)} />
       )}
-    </div>
+    </li>
   );
 }

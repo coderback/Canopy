@@ -1,58 +1,163 @@
 @import "tailwindcss";
 
+/*
+ * Canopy design tokens.
+ * A calm, light, forest-green identity: warm neutral surfaces, one confident
+ * green accent, near-black ink for primary actions, soft layered cards.
+ */
 :root {
-  /* Canopy — refined forest/emerald identity, light. */
-  --background: #f4f6f4; /* faint green-grey app shell */
+  --background: #f4f5f2;
+  --sidebar: #fafaf8;
   --surface: #ffffff;
-  --surface-sunken: #f8faf8;
-  --foreground: #0f1a14;
-  --muted: #5b6b60;
-  --border: #e3e9e4;
-  --border-strong: #d3dcd5;
-  --brand: #047857; /* emerald-700 */
-  --brand-strong: #065f46; /* emerald-800 */
+  --surface-sunken: #f4f5f2;
+  --surface-hover: #f8f9f6;
+  --foreground: #0f1511;
+  --muted: #5f695f;
+  --subtle: #8a938a;
+  --border: #e5e8e2;
+  --border-strong: #d3d8d0;
+
+  --brand: #059669;
+  --brand-strong: #047857;
+  --brand-deep: #064e3b;
+  --brand-soft: #e7f6ee;
+  --brand-ring: rgba(5, 150, 105, 0.28);
+  --ink: #121814;
+
+  --radius-card: 16px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 18, 0.04), 0 1px 1px rgba(16, 24, 18, 0.03);
+  --shadow-pop: 0 12px 32px -8px rgba(16, 24, 18, 0.18), 0 2px 6px rgba(16, 24, 18, 0.06);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-sidebar: var(--sidebar);
   --color-surface: var(--surface);
   --color-surface-sunken: var(--surface-sunken);
+  --color-surface-hover: var(--surface-hover);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-soft: var(--brand-soft);
+  --color-ink: var(--ink);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+  --animate-fade-in: fade-in 160ms ease-out both;
+  --animate-rise: rise 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-slide-in: slide-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pop: pop 140ms ease-out both;
+}
+
+html {
+  color-scheme: light;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  /* Subtle canopy wash so the shell doesn't read as flat grey. */
-  background-image:
-    radial-gradient(60rem 40rem at 85% -10%, rgba(4, 120, 87, 0.05), transparent 60%),
-    radial-gradient(50rem 40rem at -10% 0%, rgba(4, 120, 87, 0.04), transparent 55%);
-  background-attachment: fixed;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* JSON editors / payloads */
+::selection {
+  background: var(--brand-soft);
+  color: var(--brand-deep);
+}
+
 .font-mono {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-/* Thin, calm scrollbars for the entity strip / payload areas. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The small uppercase label used on stat cards and panel headers. */
+.eyebrow {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Visible, consistent keyboard focus everywhere (in a layer so utilities can override it). */
+@layer base {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
+
 .canopy-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
 .canopy-scroll::-webkit-scrollbar {
-  height: 6px;
-  width: 6px;
+  height: 8px;
+  width: 8px;
 }
 .canopy-scroll::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border-radius: 9999px;
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, #eceee9 25%, #f5f6f3 37%, #eceee9 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 10px;
+}
+
+/* Soft canopy backdrop for the sign-in hero */
+.hero-canopy {
+  background:
+    radial-gradient(60% 50% at 20% 10%, rgba(52, 211, 153, 0.35), transparent 60%),
+    radial-gradient(50% 45% at 90% 90%, rgba(16, 185, 129, 0.35), transparent 60%),
+    linear-gradient(160deg, #052e22 0%, #064e3b 55%, #065f46 100%);
+}
+
+/* Dotted grid used behind hero art */
+.dot-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

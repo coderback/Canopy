@@ -5,14 +5,22 @@ import { Suspense, useState } from "react";
 import { api, loginUrl } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { Button, Card, ErrorNote, Loading } from "@/components/ui";
+import { CanopyMark, Icon } from "@/components/icons";
 
 export default function InvitePage() {
   // useSearchParams must sit under a Suspense boundary (Next 16 prerendering).
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-16">
-      <Suspense fallback={<Loading />}>
-        <AcceptInvite />
-      </Suspense>
+    <main className="hero-canopy relative flex min-h-screen flex-1 items-center justify-center px-4 py-16">
+      <div className="dot-grid pointer-events-none absolute inset-0 opacity-60" />
+      <div className="relative w-full max-w-md animate-rise">
+        <div className="mb-6 flex items-center justify-center gap-2.5 text-white">
+          <CanopyMark size={32} />
+          <span className="text-xl font-semibold tracking-tight">Canopy</span>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <AcceptInvite />
+        </Suspense>
+      </div>
     </main>
   );
 }
@@ -25,13 +33,16 @@ function AcceptInvite() {
   const [error, setError] = useState<string | null>(null);
 
   if (loading) return <Loading />;
-  if (!token) return <ErrorNote message="This invitation link is incomplete." />;
+  if (!token) return <Card padded><ErrorNote message="This invitation link is incomplete." /></Card>;
 
   if (!me) {
     return (
-      <Card className="p-6 text-center">
-        <p className="mb-4 text-sm text-slate-700">You&apos;ve been invited to a Canopy workspace. Sign in with Xero to accept.</p>
-        <a href={loginUrl(`/invite?token=${encodeURIComponent(token)}`)} className="inline-flex w-full justify-center rounded-lg bg-[#13B5EA] px-4 py-2.5 text-sm font-semibold text-white">
+      <Card padded className="p-7 text-center shadow-pop">
+        <span className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft text-brand-strong"><Icon name="mail" size={22} /></span>
+        <h1 className="text-xl font-semibold tracking-tight">You&apos;ve been invited</h1>
+        <p className="mb-6 mt-2 text-sm leading-relaxed text-muted">Sign in with Xero to join this Canopy workspace.</p>
+        <a href={loginUrl(`/invite?token=${encodeURIComponent(token)}`)}
+          className="flex h-11 w-full items-center justify-center rounded-xl bg-[#13B5EA] text-sm font-semibold text-white shadow-sm transition hover:bg-[#0f9fcf]">
           Sign in with Xero
         </a>
       </Card>
@@ -52,12 +63,14 @@ function AcceptInvite() {
   }
 
   return (
-    <Card className="space-y-3 p-6">
-      <p className="text-sm text-slate-700">
-        Accept this invitation as <b>{me.user.email}</b>? It only works for the email address it was sent to.
+    <Card padded className="p-7 shadow-pop">
+      <span className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft text-brand-strong"><Icon name="mail" size={22} /></span>
+      <h1 className="text-xl font-semibold tracking-tight">Join this workspace?</h1>
+      <p className="mb-5 mt-2 text-sm leading-relaxed text-muted">
+        You&apos;re signed in as <b className="text-foreground">{me.user.email}</b>. The invitation only works for the email address it was sent to.
       </p>
       <ErrorNote message={error} />
-      <Button onClick={accept} disabled={busy} className="w-full">
+      <Button onClick={accept} disabled={busy} className="h-11 w-full">
         {busy ? "Joining…" : "Accept invitation"}
       </Button>
     </Card>
